@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { Analytics } from '@vercel/analytics/react'
 import type { AnalysisResult, Issue, QueryResponse, TopTalker } from './api'
 import { ASYNC_THRESHOLD_BYTES, analyzePcap, analyzePcapAsync, queryFilter } from './api'
 import CaptureProperties from './components/CaptureProperties'
@@ -164,10 +165,18 @@ function Dashboard() {
 }
 
 export default function App() {
-  if (!isSupabaseConfigured) return <Dashboard />
+  if (!isSupabaseConfigured) {
+    return (
+      <>
+        <Dashboard />
+        <Analytics />
+      </>
+    )
+  }
   return (
     <SupabaseAuthGate>
       <Dashboard />
+      <Analytics />
     </SupabaseAuthGate>
   )
 }
