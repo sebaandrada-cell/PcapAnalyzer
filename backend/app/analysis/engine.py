@@ -1,0 +1,852 @@
+"""Single-pass analysis engine.
+
+Consumes the packet stream produced by ``tshark -T ek`` exactly once,
+accumulating summary counters, per-protocol stats, per-conversation state and
+the raw material for issue detection. Detection rules themselves live in
+``detectors.py``.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from .. import __version__, config
+from ..detectors import build_issues
+from ..detectors.tls_alerts import _TLS_ALERT_NAMES
+from ..models import (
+    AnalysisResult,
+    Conversations,
+    DhcpLeaseRow,
+    DnsQueryRow,
+    FileInfo,
+    HttpRequestRow,
+    Meta,
+    PacketList,
+    PacketRow,
+    ProtocolStat,
+    ServiceResponseTime,
+    Summary,
+    TcpConversation,
+    TimeSeriesPoint,
+    TlsSession,
+    TopTalker,
+    Tunnel,
+    UdpConversation,
+)
+from ..tshark import (
+    field as fget,
+    field_bool,
+    field_present,
+    iter_packets,
+    tshark_version,
+)
+
+
+@dataclass
+class ConvState:
+    stream_id: int
+    src: str
+    src_port: int
+    dst: str
+    dst_port: int
+    packets: int = 0
+    bytes: int = 0
+    bytes_fwd: int = 0
+    bytes_rev: int = 0
+    first_ts: float = 0.0
+    last_ts: float = 0.0
+    # TCP-only signals
+    retransmissions: int = 0
+    zero_window_events: int = 0
+    syn_ts: Optional[float] = None
+    synack_ts: Optional[float] = None
+    synack_seen: bool = False
+    rst_ts: Optional[float] = None
+    mss_client: Optional[int] = None
+    mss_server: Optional[int] = None
+    full_size_retrans: int = 0  # retransmissions of MSS-sized segments (PMTUD)
+
+
+@dataclass
+class DnsQuery:
+    ts: float
+    name: str
+    server: str
+    client: str
+
+
+@dataclass
+class DnsExchange:
+    name: str
+    server: str
+    client: str
+    latency_s: float
+    status: str = "ok"
+
+
+@dataclass
+class TlsAlert:
+    ts: float
+    src: str
+    dst: str
+    level: int
+    desc: int
+    stream_id: Optional[int]
+
+
+@dataclass
+class DnsError:
+    rcode: int  # 2 = SERVFAIL, 3 = NXDOMAIN
+    name: str
+    server: str
+    client: str
+
+
+@dataclass
+class IcmpFragEvent:
+    """ICMP 'Fragmentation Needed' / ICMPv6 'Packet Too Big'."""
+
+    ts: float
+    src: str  # router reporting the bottleneck
+    dst: str  # sender of the too-big packet
+    mtu: int
+
+
+@dataclass
+class FragGroup:
+    """Fragments of one IPv4 datagram, keyed by (src, dst, ip.id, proto)."""
+
+    packets: int = 0
+    bytes: int = 0
+    has_first: bool = False
+    has_last: bool = False  # saw the MF=0, offset>0 fragment
+
+
+@dataclass
+class TunnelState:
+    type: str  # esp | ike | wireguard | openvpn | gre | l2tp
+    peer_a: str
+    peer_b: str
+    packets_a2b: int = 0
+    packets_b2a: int = 0
+    bytes: int = 0
+
+_TUNNEL_TOKENS = [
+    ("esp", "esp"),
+    ("isakmp", "ike"),
+    ("wireguard", "wireguard"),
+    ("openvpn", "openvpn"),
+    ("gre", "gre"),
+    ("l2tp", "l2tp"),
+]
+
+_TLS_VERSIONS = {
+    "0x0300": "SSL 3.0",
+    "0x0301": "TLS 1.0",
+    "0x0302": "TLS 1.1",
+    "0x0303": "TLS 1.2",
+    "0x0304": "TLS 1.3",
+}
+
+# Common cipher suites; unknown values fall back to their hex id.
+_TLS_CIPHERS = {
+    "0x002f": "RSA_AES_128_CBC_SHA",
+    "0x0035": "RSA_AES_256_CBC_SHA",
+    "0x009c": "RSA_AES_128_GCM_SHA256",
+    "0x1301": "TLS_AES_128_GCM_SHA256",
+    "0x1302": "TLS_AES_256_GCM_SHA384",
+    "0x1303": "TLS_CHACHA20_POLY1305_SHA256",
+    "0xc02b": "ECDHE_ECDSA_AES_128_GCM_SHA256",
+    "0xc02f": "ECDHE_RSA_AES_128_GCM_SHA256",
+    "0xc030": "ECDHE_RSA_AES_256_GCM_SHA384",
+}
+
+
+@dataclass
+class TlsSessionState:
+    stream_id: int
+    client: str
+    server: str
+    version: Optional[str] = None
+    cipher: Optional[str] = None
+    sni: Optional[str] = None
+    alert: Optional[str] = None
+
+
+@dataclass
+class DhcpTxnState:
+    """One DHCP transaction (all messages sharing a BOOTP xid)."""
+
+    client_mac: str
+    hostname: Optional[str] = None
+    ip: Optional[str] = None
+    server: Optional[str] = None
+    first_ts: float = 0.0
+    ack_ts: Optional[float] = None
+    # message types seen (1 discover, 2 offer, 3 request, 4 decline, 5 ack,
+    # 6 nak, 7 release, 8 inform)
+    types: set = field(default_factory=set)
+
+
+@dataclass
+class CaptureState:
+    """Everything accumulated during the single pass over the capture."""
+
+    packets: int = 0
+    bytes: int = 0
+    first_ts: Optional[float] = None
+    last_ts: Optional[float] = None
+    proto_packets: Dict[str, int] = field(default_factory=dict)
+    proto_bytes: Dict[str, int] = field(default_factory=dict)
+    # per-second buckets: second offset -> [packets, bytes, retransmissions]
+    buckets: Dict[int, List[int]] = field(default_factory=dict)
+    tcp_convs: Dict[int, ConvState] = field(default_factory=dict)
+    udp_convs: Dict[int, ConvState] = field(default_factory=dict)
+    talkers: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    # DNS IDs can legitimately be reused before an earlier transaction has
+    # completed, so each key needs a FIFO rather than a single query.
+    dns_pending: Dict[Tuple[str, str, str], List[DnsQuery]] = field(default_factory=dict)
+    dns_answered: List[DnsExchange] = field(default_factory=list)
+    dns_errors: List[DnsError] = field(default_factory=list)
+    tls_alerts: List[TlsAlert] = field(default_factory=list)
+    icmp_frag_events: List[IcmpFragEvent] = field(default_factory=list)
+    frag_packets: int = 0
+    frag_groups: Dict[Tuple[str, str, str, str], FragGroup] = field(default_factory=dict)
+    tunnels: Dict[Tuple[str, Tuple[str, str]], TunnelState] = field(default_factory=dict)
+    # ARP: IP address -> {MAC -> announcement count} (duplicate IP detection)
+    arp_map: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    # Wireshark-style packet list (first PACKET_LIST_MAX packets)
+    packet_rows: List[PacketRow] = field(default_factory=list)
+    # HTTP requests + per-stream queue of requests awaiting their response
+    http_requests: List[HttpRequestRow] = field(default_factory=list)
+    http_pending: Dict[int, List[HttpRequestRow]] = field(default_factory=dict)
+    # Service response times (Wireshark SRT): per-protocol latency samples (seconds)
+    http_response_times: List[float] = field(default_factory=list)
+    # TLS sessions keyed by tcp.stream
+    tls_sessions: Dict[int, TlsSessionState] = field(default_factory=dict)
+    # DHCP transactions keyed by BOOTP xid (+ client MAC)
+    dhcp_txns: Dict[Tuple[str, str], DhcpTxnState] = field(default_factory=dict)
+    truncated_sections: set = field(default_factory=set)
+    dns_queries_seen: int = 0
+
+
+def _sanitize(value: str, max_len: int = 255) -> str:
+    """Strings coming from the capture are untrusted; strip control chars."""
+    return "".join(ch if ch.isprintable() else "?" for ch in value)[:max_len]
+
+
+def _protocol_label(layers_chain: List[str]) -> str:
+    """Reduce a frame.protocols chain to its most specific useful layer."""
+    # ICMP errors and tunnels quote/carry inner packets; label them by the
+    # carrier, not by the (possibly partial) innermost layer.
+    for carrier in ("icmp", "icmpv6"):
+        if carrier in layers_chain:
+            return carrier
+    layers = list(layers_chain)
+    while layers and layers[-1] in ("data", "data-text-lines", "ethertype"):
+        layers.pop()
+    return layers[-1] if layers else "unknown"
+
+
+def _update_conversation(
+    convs: Dict[int, ConvState],
+    stream_id: int,
+    src: str,
+    src_port: int,
+    dst: str,
+    dst_port: int,
+    ts: float,
+    length: int,
+) -> ConvState:
+    conv = convs.get(stream_id)
+    if conv is None:
+        conv = ConvState(stream_id, src, src_port, dst, dst_port,
+                         first_ts=ts, last_ts=ts)
+        convs[stream_id] = conv
+    conv.packets += 1
+    conv.bytes += length
+    conv.last_ts = ts
+    if src == conv.src and src_port == conv.src_port:
+        conv.bytes_fwd += length
+    else:
+        conv.bytes_rev += length
+    return conv
+
+
+def _consume_packet(state: CaptureState, layers: dict) -> None:
+    ts = float(fget(layers, "frame.time_epoch", "0") or 0)
+    length = int(fget(layers, "frame.len", "0") or 0)
+
+    state.packets += 1
+    state.bytes += length
+    if state.first_ts is None:
+        state.first_ts = ts
+    state.last_ts = ts
+
+    chain = [token for token in (fget(layers, "frame.protocols", "") or "").split(":") if token]
+    label = _protocol_label(chain)
+    state.proto_packets[label] = state.proto_packets.get(label, 0) + 1
+    state.proto_bytes[label] = state.proto_bytes.get(label, 0) + length
+
+    src = fget(layers, "ip.src") or fget(layers, "ipv6.src")
+    dst = fget(layers, "ip.dst") or fget(layers, "ipv6.dst")
+
+    if len(state.packet_rows) < config.PACKET_LIST_MAX:
+        # tcp.stream tags the row so the flow graph can filter one conversation
+        # precisely (ICMP errors quote an inner packet — don't tag those).
+        raw_stream = fget(layers, "tcp.stream")
+        pkt_stream = (
+            int(raw_stream)
+            if raw_stream is not None and "icmp" not in chain and "icmpv6" not in chain
+            else None
+        )
+        state.packet_rows.append(PacketRow(
+            number=int(fget(layers, "frame.number", "0") or 0),
+            time=round(max(0.0, ts - state.first_ts), 6),
+            src=_sanitize(src or "—", 64),
+            dst=_sanitize(dst or "—", 64),
+            protocol=_sanitize(fget(layers, "_ws.col.protocol", "?") or "?", 24),
+            length=length,
+            info=_sanitize(fget(layers, "_ws.col.info", "") or "", 200),
+            stream=pkt_stream,
+        ))
+
+    if src and dst:
+        for addr, sent in ((src, True), (dst, False)):
+            if addr not in state.talkers and len(state.talkers) >= config.MAX_TRACKED_TALKERS:
+                state.truncated_sections.add("talkers")
+                continue
+            talker = state.talkers.setdefault(
+                addr, {"packets": 0, "bytes_sent": 0, "bytes_received": 0}
+            )
+            talker["packets"] += 1
+            talker["bytes_sent" if sent else "bytes_received"] += length
+
+    bucket_key = int(ts - state.first_ts) if ts >= state.first_ts else 0
+    bucket = state.buckets.get(bucket_key)
+    if bucket is None:
+        if len(state.buckets) < config.MAX_TIME_SERIES_BUCKETS:
+            bucket = state.buckets[bucket_key] = [0, 0, 0]
+        else:
+            state.truncated_sections.add("time_series")
+    if bucket is not None:
+        bucket[0] += 1
+        bucket[1] += length
+
+    tcp_stream = fget(layers, "tcp.stream")
+    udp_stream = fget(layers, "udp.stream")
+
+    # ICMP errors quote the offending packet; its embedded TCP/UDP/DNS fields
+    # must not be accounted as real conversations or queries.
+    is_icmp_error = "icmp" in chain or "icmpv6" in chain
+    if is_icmp_error:
+        tcp_stream = udp_stream = None
+
+    if tcp_stream is not None and src and dst:
+        stream_key = int(tcp_stream)
+        if (
+            stream_key not in state.tcp_convs
+            and len(state.tcp_convs) + len(state.udp_convs) >= config.MAX_CONVERSATIONS
+        ):
+            state.truncated_sections.add("conversations")
+            tcp_stream = None
+    if tcp_stream is not None and src and dst:
+        conv = _update_conversation(
+            state.tcp_convs, int(tcp_stream), src,
+            int(fget(layers, "tcp.srcport", "0") or 0), dst,
+            int(fget(layers, "tcp.dstport", "0") or 0), ts, length,
+        )
+        syn = field_bool(layers, "tcp.flags.syn")
+        ack = field_bool(layers, "tcp.flags.ack")
+        mss = fget(layers, "tcp.options.mss_val")
+        if syn and not ack:
+            if conv.syn_ts is None:
+                conv.syn_ts = ts
+            if mss is not None:
+                conv.mss_client = int(mss)
+        if syn and ack:
+            conv.synack_seen = True
+            if conv.synack_ts is None:
+                conv.synack_ts = ts
+            if mss is not None:
+                conv.mss_server = int(mss)
+        if field_bool(layers, "tcp.flags.reset") and conv.rst_ts is None:
+            conv.rst_ts = ts
+        if (
+            field_present(layers, "tcp.analysis.retransmission")
+            or field_present(layers, "tcp.analysis.fast_retransmission")
+            or field_present(layers, "tcp.analysis.spurious_retransmission")
+        ):
+            conv.retransmissions += 1
+            if bucket is not None:
+                bucket[2] += 1
+            sender_mss = conv.mss_client if src == conv.src else conv.mss_server
+            seg_len = int(fget(layers, "tcp.len", "0") or 0)
+            if sender_mss and seg_len >= sender_mss:
+                conv.full_size_retrans += 1
+        if field_present(layers, "tcp.analysis.zero_window"):
+            conv.zero_window_events += 1
+
+    if udp_stream is not None and src and dst:
+        stream_key = int(udp_stream)
+        if (
+            stream_key not in state.udp_convs
+            and len(state.tcp_convs) + len(state.udp_convs) >= config.MAX_CONVERSATIONS
+        ):
+            state.truncated_sections.add("conversations")
+            udp_stream = None
+    if udp_stream is not None and src and dst:
+        _update_conversation(
+            state.udp_convs, int(udp_stream), src,
+            int(fget(layers, "udp.srcport", "0") or 0), dst,
+            int(fget(layers, "udp.dstport", "0") or 0), ts, length,
+        )
+
+    # HTTP requests/responses (Wireshark "HTTP requests" view)
+    if tcp_stream is not None and src and dst and not is_icmp_error:
+        stream_id = int(tcp_stream)
+        method = fget(layers, "http.request.method")
+        if method is not None and len(state.http_requests) < config.MAX_HTTP_REQUESTS:
+            request = HttpRequestRow(
+                time=round(max(0.0, ts - state.first_ts), 6),
+                client=src, server=dst,
+                method=_sanitize(method, 16),
+                host=_sanitize(fget(layers, "http.host", "") or "", 128),
+                uri=_sanitize(fget(layers, "http.request.uri", "") or "", 200),
+            )
+            state.http_requests.append(request)
+            state.http_pending.setdefault(stream_id, []).append(request)
+        elif method is not None:
+            state.truncated_sections.add("http_requests")
+        response_code = fget(layers, "http.response.code")
+        if response_code is not None:
+            pending = state.http_pending.get(stream_id)
+            if pending:
+                pending.pop(0).status = int(response_code)
+            http_time = fget(layers, "http.time")
+            if http_time is not None and len(state.http_response_times) < config.MAX_HTTP_REQUESTS:
+                try:
+                    state.http_response_times.append(float(http_time))
+                except ValueError:
+                    pass
+
+    # TLS sessions (Wireshark TLS view): one row per stream
+    if tcp_stream is not None and src and dst and "tls" in chain:
+        stream_id = int(tcp_stream)
+        session = state.tls_sessions.get(stream_id)
+        if session is None:
+            if len(state.tls_sessions) < config.MAX_TLS_SESSIONS:
+                session = TlsSessionState(stream_id=stream_id, client=src, server=dst)
+                state.tls_sessions[stream_id] = session
+            else:
+                state.truncated_sections.add("tls_sessions")
+        if session is not None:
+            handshake_type = fget(layers, "tls.handshake.type")
+            version = fget(layers, "tls.handshake.version") or fget(layers, "tls.record.version")
+            if version is not None:
+                session.version = _TLS_VERSIONS.get(version, version)
+            cipher = fget(layers, "tls.handshake.ciphersuite")
+            sni = fget(layers, "tls.handshake.extensions_server_name")
+            if handshake_type == "1":
+                session.client, session.server = src, dst
+                if sni:
+                    session.sni = _sanitize(sni, 128)
+            if handshake_type == "2" and cipher:
+                session.cipher = _TLS_CIPHERS.get(cipher, cipher)
+            elif cipher and session.cipher is None:
+                session.cipher = _TLS_CIPHERS.get(cipher, cipher)
+
+    dns_id = fget(layers, "dns.id")
+    if dns_id is not None and src and dst and not is_icmp_error:
+        name = _sanitize(fget(layers, "dns.qry.name", "") or "")
+        key = (udp_stream or ("tcp-%s" % tcp_stream), dns_id, name)
+        if field_bool(layers, "dns.flags.response"):
+            pending = state.dns_pending.get(key)
+            query = pending.pop(0) if pending else None
+            if pending == []:
+                del state.dns_pending[key]
+            rcode = int(fget(layers, "dns.flags.rcode", "0") or 0)
+            if query is not None:
+                if len(state.dns_answered) < config.MAX_DNS_TRANSACTIONS:
+                    state.dns_answered.append(
+                        DnsExchange(name=name, server=src, client=dst,
+                                    latency_s=ts - query.ts,
+                                    status={2: "servfail", 3: "nxdomain"}.get(rcode, "ok"))
+                    )
+                else:
+                    state.truncated_sections.add("dns")
+            if rcode in (2, 3):  # SERVFAIL / NXDOMAIN
+                if len(state.dns_errors) < config.MAX_DNS_TRANSACTIONS:
+                    state.dns_errors.append(
+                        DnsError(rcode=rcode, name=name, server=src, client=dst)
+                    )
+                else:
+                    state.truncated_sections.add("dns")
+        else:
+            if state.dns_queries_seen < config.MAX_DNS_TRANSACTIONS:
+                state.dns_queries_seen += 1
+                state.dns_pending.setdefault(key, []).append(
+                    DnsQuery(ts=ts, name=name, server=dst, client=src)
+                )
+            else:
+                state.truncated_sections.add("dns")
+
+    dhcp_type = fget(layers, "dhcp.option.dhcp")
+    if dhcp_type is not None and fget(layers, "dhcp.id") is not None:
+        mac = _sanitize(fget(layers, "dhcp.hw.mac_addr", "") or "?", 32)
+        key = (str(fget(layers, "dhcp.id")), mac)
+        txn = state.dhcp_txns.get(key)
+        if txn is None:
+            if len(state.dhcp_txns) >= config.MAX_DHCP_TRANSACTIONS:
+                state.truncated_sections.add("dhcp")
+                txn = None
+            else:
+                txn = state.dhcp_txns[key] = DhcpTxnState(client_mac=mac, first_ts=ts)
+        if txn is not None:
+            try:
+                kind = int(dhcp_type)
+            except ValueError:
+                kind = 0
+            txn.types.add(kind)
+            hostname = fget(layers, "dhcp.option.hostname")
+            if hostname and txn.hostname is None:
+                txn.hostname = _sanitize(hostname, 64)
+            your_ip = fget(layers, "dhcp.ip.your")
+            if your_ip and your_ip != "0.0.0.0" and kind in (2, 5):
+                txn.ip = _sanitize(your_ip, 45)
+            server_id = fget(layers, "dhcp.option.dhcp_server_id")
+            if server_id and kind in (2, 5, 6):
+                txn.server = _sanitize(server_id, 45)
+            if kind == 5 and txn.ack_ts is None:
+                txn.ack_ts = ts
+
+    if field_present(layers, "tls.alert_message.desc"):
+        desc = int(fget(layers, "tls.alert_message.desc", "-1") or -1)
+        if len(state.tls_alerts) < config.MAX_TLS_ALERTS:
+            state.tls_alerts.append(
+                TlsAlert(
+                    ts=ts,
+                    src=src or "?",
+                    dst=dst or "?",
+                    level=int(fget(layers, "tls.alert_message.level", "0") or 0),
+                    desc=desc,
+                    stream_id=int(tcp_stream) if tcp_stream is not None else None,
+                )
+            )
+        else:
+            state.truncated_sections.add("tls_alerts")
+        if tcp_stream is not None:
+            session = state.tls_sessions.get(int(tcp_stream))
+            if session is not None:
+                session.alert = _TLS_ALERT_NAMES.get(desc, "alert_%d" % desc)
+
+    # ICMP "Fragmentation Needed" / ICMPv6 "Packet Too Big" (path MTU)
+    if src and dst:
+        if fget(layers, "icmp.type") == "3" and fget(layers, "icmp.code") == "4":
+            state.icmp_frag_events.append(IcmpFragEvent(
+                ts=ts, src=src, dst=dst,
+                mtu=int(fget(layers, "icmp.mtu", "0") or 0),
+            )) if len(state.icmp_frag_events) < config.MAX_ICMP_EVENTS else state.truncated_sections.add("icmp")
+        elif fget(layers, "icmpv6.type") == "2":
+            state.icmp_frag_events.append(IcmpFragEvent(
+                ts=ts, src=src, dst=dst,
+                mtu=int(fget(layers, "icmpv6.mtu", "0") or 0),
+            )) if len(state.icmp_frag_events) < config.MAX_ICMP_EVENTS else state.truncated_sections.add("icmp")
+
+    # IPv4 fragments (MF set, or a trailing fragment with offset > 0)
+    frag_offset = int(fget(layers, "ip.frag_offset", "0") or 0)
+    if src and dst and (field_bool(layers, "ip.flags.mf") or frag_offset > 0):
+        state.frag_packets += 1
+        group_key = (src, dst, fget(layers, "ip.id", "?") or "?",
+                     fget(layers, "ip.proto", "?") or "?")
+        group = state.frag_groups.get(group_key)
+        if group is None and len(state.frag_groups) < config.MAX_FRAGMENT_GROUPS:
+            group = state.frag_groups[group_key] = FragGroup()
+        elif group is None:
+            state.truncated_sections.add("fragments")
+        if group is not None:
+            group.packets += 1
+            group.bytes += length
+            if frag_offset == 0 and field_bool(layers, "ip.flags.mf"):
+                group.has_first = True
+            if frag_offset > 0 and not field_bool(layers, "ip.flags.mf"):
+                group.has_last = True
+
+    # VPN / tunnel traffic
+    if src and dst:
+        for token, tunnel_type in _TUNNEL_TOKENS:
+            if token not in chain:
+                continue
+            pair = tuple(sorted((src, dst)))
+            tunnel = state.tunnels.get((tunnel_type, pair))
+            if tunnel is None:
+                if len(state.tunnels) < config.MAX_TRACKED_TALKERS:
+                    tunnel = TunnelState(type=tunnel_type, peer_a=src, peer_b=dst)
+                    state.tunnels[(tunnel_type, pair)] = tunnel
+                else:
+                    state.truncated_sections.add("tunnels")
+                    break
+            if src == tunnel.peer_a:
+                tunnel.packets_a2b += 1
+            else:
+                tunnel.packets_b2a += 1
+            tunnel.bytes += length
+            break
+
+    # ARP announcements (duplicate IP detection)
+    arp_ip = fget(layers, "arp.src.proto_ipv4")
+    arp_mac = fget(layers, "arp.src.hw_mac")
+    if arp_ip and arp_mac and arp_ip != "0.0.0.0":
+        if arp_ip not in state.arp_map and len(state.arp_map) >= config.MAX_ARP_CLAIMS:
+            state.truncated_sections.add("arp")
+            return
+        macs = state.arp_map.setdefault(arp_ip, {})
+        if arp_mac not in macs and len(macs) >= config.MAX_ARP_MACS_PER_IP:
+            state.truncated_sections.add("arp")
+            return
+        macs[arp_mac] = macs.get(arp_mac, 0) + 1
+
+
+def _build_summary(state: CaptureState) -> Summary:
+    duration = 0.0
+    if state.first_ts is not None and state.last_ts is not None:
+        duration = max(0.0, state.last_ts - state.first_ts)
+    return Summary(
+        packets=state.packets,
+        bytes=state.bytes,
+        duration_seconds=round(duration, 6),
+        conversations=len(state.tcp_convs) + len(state.udp_convs),
+        start_time_epoch=state.first_ts,
+        end_time_epoch=state.last_ts,
+        avg_packets_per_second=round(state.packets / duration, 2) if duration else 0.0,
+        avg_bytes_per_second=round(state.bytes / duration, 2) if duration else 0.0,
+    )
+
+
+def _build_protocols(state: CaptureState) -> List[ProtocolStat]:
+    total_packets = state.packets or 1
+    total_bytes = state.bytes or 1
+    stats = [
+        ProtocolStat(
+            protocol=proto,
+            packets=count,
+            bytes=state.proto_bytes.get(proto, 0),
+            packet_pct=round(100.0 * count / total_packets, 2),
+            bytes_pct=round(100.0 * state.proto_bytes.get(proto, 0) / total_bytes, 2),
+        )
+        for proto, count in state.proto_packets.items()
+    ]
+    stats.sort(key=lambda item: item.packets, reverse=True)
+    return stats
+
+
+def _build_time_series(state: CaptureState) -> List[TimeSeriesPoint]:
+    return [
+        TimeSeriesPoint(t=second, packets=vals[0], bytes=vals[1], retransmissions=vals[2])
+        for second, vals in sorted(state.buckets.items())
+    ]
+
+
+def _build_conversations(state: CaptureState) -> Conversations:
+    tcp = []
+    for conv in state.tcp_convs.values():
+        pct = 100.0 * conv.retransmissions / conv.packets if conv.packets else 0.0
+        rtt_ms = None
+        if conv.syn_ts is not None and conv.synack_ts is not None:
+            rtt_ms = round((conv.synack_ts - conv.syn_ts) * 1000, 1)
+        tcp.append(
+            TcpConversation(
+                mss_client=conv.mss_client,
+                mss_server=conv.mss_server,
+                handshake_rtt_ms=rtt_ms,
+                stream_id=conv.stream_id,
+                src=conv.src, src_port=conv.src_port,
+                dst=conv.dst, dst_port=conv.dst_port,
+                packets=conv.packets, bytes=conv.bytes,
+                bytes_src_to_dst=conv.bytes_fwd, bytes_dst_to_src=conv.bytes_rev,
+                start_time_epoch=conv.first_ts, end_time_epoch=conv.last_ts,
+                duration_seconds=round(conv.last_ts - conv.first_ts, 6),
+                retransmissions=conv.retransmissions,
+                retransmission_pct=round(pct, 2),
+                zero_window_events=conv.zero_window_events,
+            )
+        )
+    tcp.sort(key=lambda item: item.bytes, reverse=True)
+
+    udp = [
+        UdpConversation(
+            stream_id=conv.stream_id,
+            src=conv.src, src_port=conv.src_port,
+            dst=conv.dst, dst_port=conv.dst_port,
+            packets=conv.packets, bytes=conv.bytes,
+            bytes_src_to_dst=conv.bytes_fwd, bytes_dst_to_src=conv.bytes_rev,
+            start_time_epoch=conv.first_ts, end_time_epoch=conv.last_ts,
+            duration_seconds=round(conv.last_ts - conv.first_ts, 6),
+        )
+        for conv in state.udp_convs.values()
+    ]
+    udp.sort(key=lambda item: item.bytes, reverse=True)
+
+    talkers = [
+        TopTalker(
+            address=addr,
+            packets=data["packets"],
+            bytes_sent=data["bytes_sent"],
+            bytes_received=data["bytes_received"],
+            bytes_total=data["bytes_sent"] + data["bytes_received"],
+        )
+        for addr, data in state.talkers.items()
+    ]
+    talkers.sort(key=lambda item: item.bytes_total, reverse=True)
+
+    return Conversations(tcp=tcp, udp=udp, top_talkers=talkers[: config.TOP_TALKERS_LIMIT])
+
+
+def _build_dns_queries(state: CaptureState) -> List[DnsQueryRow]:
+    """Wireshark-style DNS view: every query with its resolution outcome."""
+    rows = []
+    for exchange in state.dns_answered:
+        status = exchange.status
+        if status == "ok" and exchange.latency_s > config.DNS_SLOW_THRESHOLD_S:
+            status = "slow"
+        rows.append(DnsQueryRow(
+            name=exchange.name, client=exchange.client, server=exchange.server,
+            status=status, latency_ms=round(exchange.latency_s * 1000, 1),
+        ))
+    for pending in state.dns_pending.values():
+        for query in pending:
+            rows.append(DnsQueryRow(
+                name=query.name, client=query.client, server=query.server,
+                status="unanswered", latency_ms=None,
+            ))
+    return rows
+
+
+def _build_dhcp_leases(state: CaptureState) -> List[DhcpLeaseRow]:
+    """Wireshark-style DHCP view: one row per transaction with its outcome."""
+    rows = []
+    for txn in state.dhcp_txns.values():
+        types = txn.types
+        if 5 in types:
+            status = "bound"
+        elif 6 in types:
+            status = "nak"
+        elif 4 in types:
+            status = "declined"
+        elif 7 in types:
+            status = "released"
+        elif 2 in types:
+            status = "offered"
+        elif types & {1, 3}:
+            status = "no_offer"
+        else:  # INFORM-only exchanges carry no lease outcome worth reporting
+            continue
+        latency = (
+            round((txn.ack_ts - txn.first_ts) * 1000, 1)
+            if txn.ack_ts is not None else None
+        )
+        rows.append(DhcpLeaseRow(
+            client_mac=txn.client_mac, hostname=txn.hostname, ip=txn.ip,
+            server=txn.server, status=status, latency_ms=latency,
+        ))
+    return rows
+
+
+def _build_service_response_times(state: CaptureState) -> List[ServiceResponseTime]:
+    """Aggregate request→response latency per protocol (Wireshark SRT)."""
+    dns_samples = [e.latency_s for e in state.dns_answered]
+    tcp_samples = [
+        (c.synack_ts - c.syn_ts)
+        for c in state.tcp_convs.values()
+        if c.syn_ts is not None and c.synack_ts is not None
+    ]
+    sources = [
+        ("DNS", dns_samples),
+        ("TCP handshake", tcp_samples),
+        ("HTTP", state.http_response_times),
+    ]
+    rows = []
+    for protocol, samples in sources:
+        if not samples:
+            continue
+        rows.append(ServiceResponseTime(
+            protocol=protocol,
+            samples=len(samples),
+            min_ms=round(min(samples) * 1000, 2),
+            avg_ms=round(sum(samples) / len(samples) * 1000, 2),
+            max_ms=round(max(samples) * 1000, 2),
+        ))
+    return rows
+
+
+def _build_tls_sessions(state: CaptureState) -> List[TlsSession]:
+    sessions = [
+        TlsSession(
+            stream_id=s.stream_id, client=s.client, server=s.server,
+            version=s.version, cipher=s.cipher, sni=s.sni, alert=s.alert,
+        )
+        for s in state.tls_sessions.values()
+    ]
+    sessions.sort(key=lambda item: item.stream_id)
+    return sessions
+
+
+def _build_tunnels(state: CaptureState) -> List[Tunnel]:
+    tunnels = [
+        Tunnel(
+            type=tunnel.type,
+            peer_a=tunnel.peer_a,
+            peer_b=tunnel.peer_b,
+            packets=tunnel.packets_a2b + tunnel.packets_b2a,
+            packets_a_to_b=tunnel.packets_a2b,
+            packets_b_to_a=tunnel.packets_b2a,
+            bytes=tunnel.bytes,
+        )
+        for tunnel in state.tunnels.values()
+    ]
+    tunnels.sort(key=lambda item: item.bytes, reverse=True)
+    return tunnels
+
+
+def analyze_pcap(
+    tshark_path: str,
+    pcap_path: str,
+    original_filename: str,
+    size_bytes: int,
+) -> AnalysisResult:
+    """Run the full single-pass analysis over a capture file."""
+    started = time.monotonic()
+    state = CaptureState()
+    for layers in iter_packets(tshark_path, pcap_path):
+        _consume_packet(state, layers)
+
+    issues = build_issues(state)
+    if len(issues) > config.MAX_ISSUES:
+        state.truncated_sections.add("issues")
+        issues = issues[:config.MAX_ISSUES]
+    return AnalysisResult(
+        file=FileInfo(name=original_filename, size_bytes=size_bytes),
+        summary=_build_summary(state),
+        protocols=_build_protocols(state),
+        time_series=_build_time_series(state),
+        conversations=_build_conversations(state),
+        tunnels=_build_tunnels(state),
+        issues=issues,
+        packet_list=PacketList(
+            rows=state.packet_rows,
+            total=state.packets,
+            truncated=state.packets > len(state.packet_rows),
+        ),
+        dns_queries=_build_dns_queries(state),
+        dhcp_leases=_build_dhcp_leases(state),
+        http_requests=state.http_requests,
+        service_response_times=_build_service_response_times(state),
+        tls_sessions=_build_tls_sessions(state),
+        meta=Meta(
+            engine_version=__version__,
+            tshark_version=tshark_version(tshark_path),
+            analysis_duration_ms=int((time.monotonic() - started) * 1000),
+            truncated_sections=sorted(state.truncated_sections),
+        ),
+    )

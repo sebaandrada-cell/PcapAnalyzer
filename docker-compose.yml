@@ -1,0 +1,58 @@
+# PcapAnalyzer on-premise (Fase 4): backend + frontend behind nginx.
+# Usage:  docker compose up --build   ->  http://localhost:8080
+# The AI layer is optional: export ANTHROPIC_API_KEY before starting to enable it.
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-claude-opus-4-8}
+      - AUTH_MODE=${AUTH_MODE:-token}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - SUPABASE_DB_URL=${SUPABASE_DB_URL:-}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-}
+      - SUPABASE_STORAGE_BUCKET=${SUPABASE_STORAGE_BUCKET:-pcap-captures}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-200}
+      - MAX_DECOMPRESSED_MB=${MAX_DECOMPRESSED_MB:-500}
+      - TSHARK_TIMEOUT_S=${TSHARK_TIMEOUT_S:-300}
+      - ANALYZE_WORKERS=${ANALYZE_WORKERS:-2}
+      - API_TOKENS=${API_TOKENS:-}
+      - API_MAX_REQUESTS_PER_MINUTE=${API_MAX_REQUESTS_PER_MINUTE:-30}
+      - API_MAX_JOBS_PER_TOKEN=${API_MAX_JOBS_PER_TOKEN:-2}
+      - MAX_QUEUED_JOBS=${MAX_QUEUED_JOBS:-4}
+      - MAX_PENDING_CAPTURE_BYTES=${MAX_PENDING_CAPTURE_BYTES:-1073741824}
+      - MAX_RETAINED_JOBS=${MAX_RETAINED_JOBS:-20}
+      - MAX_CONVERSATIONS=${MAX_CONVERSATIONS:-20000}
+      - MAX_DNS_TRANSACTIONS=${MAX_DNS_TRANSACTIONS:-20000}
+      - MAX_HTTP_REQUESTS=${MAX_HTTP_REQUESTS:-10000}
+      - MAX_TLS_SESSIONS=${MAX_TLS_SESSIONS:-10000}
+      - MAX_FRAGMENT_GROUPS=${MAX_FRAGMENT_GROUPS:-20000}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_SUPABASE_URL: ${SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    ports:
+      # The API can invoke the configured AI account. Keep the default service
+      # local to this machine; expose it through an authenticated reverse proxy
+      # explicitly when remote access is required.
+      - "127.0.0.1:${PCAPANALYZER_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  worker:
+    extends:
+      service: backend
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    profiles:
+      - supabase
+    restart: unless-stopped

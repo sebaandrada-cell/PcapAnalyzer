@@ -1,0 +1,248 @@
+"""tshark discovery and streaming JSON invocation (no pyshark).
+
+Packets are read with ``tshark -T ek`` (newline-delimited JSON) restricted to
+the exact fields the engine needs via ``-e``, which keeps a single pass fast
+and memory-flat even for large captures. In ek output field names use
+underscores instead of dots and values arrive as lists of strings
+(booleans as "True"/"False").
+"""
+from __future__ import annotations
+
+import json
+import os
+import selectors
+import shutil
+import subprocess
+import sys
+import time
+from typing import Iterator, List, Optional
+
+from . import config
+
+_TSHARK_CANDIDATES = [
+    "/opt/homebrew/bin/tshark",
+    "/usr/local/bin/tshark",
+    "/usr/bin/tshark",
+    "/Applications/Wireshark.app/Contents/MacOS/tshark",
+    r"C:\Program Files\Wireshark\tshark.exe",
+]
+
+# Every field the analysis engine consumes. Adding a detector usually means
+# adding its fields here and handling them in analysis/engine.py.
+FIELDS: List[str] = [
+    "frame.number",
+    "frame.time_epoch",
+    "frame.len",
+    "frame.protocols",
+    "_ws.col.protocol",
+    "_ws.col.info",
+    "ip.src",
+    "ip.dst",
+    "ipv6.src",
+    "ipv6.dst",
+    "ip.id",
+    "ip.proto",
+    "ip.flags.mf",
+    "ip.frag_offset",
+    "tcp.stream",
+    "tcp.srcport",
+    "tcp.dstport",
+    "tcp.len",
+    "tcp.options.mss_val",
+    "tcp.flags.syn",
+    "tcp.flags.ack",
+    "tcp.flags.reset",
+    "tcp.analysis.retransmission",
+    "tcp.analysis.fast_retransmission",
+    "tcp.analysis.spurious_retransmission",
+    "tcp.analysis.zero_window",
+    "udp.stream",
+    "udp.srcport",
+    "udp.dstport",
+    "dns.id",
+    "dns.flags.response",
+    "dns.qry.name",
+    "dns.flags.rcode",
+    "tls.alert_message.level",
+    "tls.alert_message.desc",
+    "http.request.method",
+    "http.host",
+    "http.request.uri",
+    "http.response.code",
+    "http.time",
+    "tls.handshake.type",
+    "tls.handshake.version",
+    "tls.record.version",
+    "tls.handshake.extensions_server_name",
+    "tls.handshake.ciphersuite",
+    "icmp.type",
+    "icmp.code",
+    "icmp.mtu",
+    "icmpv6.type",
+    "icmpv6.mtu",
+    "esp.spi",
+    "arp.src.proto_ipv4",
+    "arp.src.hw_mac",
+    "dhcp.id",
+    "dhcp.option.dhcp",
+    "dhcp.hw.mac_addr",
+    "dhcp.ip.your",
+    "dhcp.option.hostname",
+    "dhcp.option.dhcp_server_id",
+]
+MAX_EK_LINE_BYTES = 1024 * 1024
+
+
+class TsharkNotFoundError(RuntimeError):
+    pass
+
+
+class TsharkError(RuntimeError):
+    pass
+
+
+class TsharkTimeoutError(TsharkError):
+    pass
+
+
+def find_tshark() -> Optional[str]:
+    env_path = os.environ.get(config.TSHARK_PATH_ENV)
+    if env_path:
+        return env_path if os.path.isfile(env_path) else None
+    found = shutil.which("tshark")
+    if found:
+        return found
+    for candidate in _TSHARK_CANDIDATES:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def install_instructions() -> str:
+    if sys.platform == "darwin":
+        return (
+            "tshark no está instalado. En macOS: 'brew install wireshark' "
+            "(solo CLI) o 'brew install --cask wireshark' (app completa). "
+            "También puedes definir TSHARK_PATH apuntando al binario."
+        )
+    if sys.platform.startswith("linux"):
+        return (
+            "tshark no está instalado. Debian/Ubuntu: 'sudo apt install tshark'. "
+            "Fedora: 'sudo dnf install wireshark-cli'. "
+            "También puedes definir TSHARK_PATH apuntando al binario."
+        )
+    return (
+        "tshark no está instalado. Descarga Wireshark desde "
+        "https://www.wireshark.org/download.html (incluye tshark) o define "
+        "TSHARK_PATH apuntando al binario."
+    )
+
+
+def tshark_version(tshark_path: str) -> str:
+    try:
+        out = subprocess.run(
+            [tshark_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        ).stdout
+        return out.splitlines()[0].strip() if out else "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+
+
+def field(layers: dict, name: str, default: Optional[str] = None) -> Optional[str]:
+    """First value of a tshark field from an ek 'layers' object."""
+    value = layers.get(name.replace(".", "_"))
+    if value is None:
+        return default
+    if isinstance(value, list):
+        return str(value[0]) if value else default
+    return str(value)
+
+
+def field_bool(layers: dict, name: str) -> bool:
+    return field(layers, name) in ("True", "true", "1")
+
+
+def field_present(layers: dict, name: str) -> bool:
+    return name.replace(".", "_") in layers
+
+
+def iter_packets(
+    tshark_path: str,
+    pcap_path: str,
+    timeout_s: Optional[int] = None,
+) -> Iterator[dict]:
+    """Stream per-packet field dicts from a single tshark pass."""
+    timeout_s = timeout_s or config.TSHARK_TIMEOUT_S
+    cmd = [tshark_path, "-r", pcap_path, "-n", "-T", "ek"]
+    for name in FIELDS:
+        cmd += ["-e", name]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    deadline = time.monotonic() + timeout_s
+    stderr_parts: List[bytes] = []
+    stdout_buffer = b""
+    selector = selectors.DefaultSelector()
+    try:
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+        selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TsharkTimeoutError(
+                    "tshark excedió el tiempo máximo de análisis (%ds)" % timeout_s
+                )
+            for key, _ in selector.select(timeout=min(remaining, 0.25)):
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                if key.data == "stderr":
+                    # Keep a useful error message without allowing malformed input
+                    # to consume unbounded memory.
+                    if sum(map(len, stderr_parts)) < 8192:
+                        stderr_parts.append(chunk)
+                    continue
+                stdout_buffer += chunk
+                if len(stdout_buffer) > MAX_EK_LINE_BYTES and b"\n" not in stdout_buffer:
+                    raise TsharkError(
+                        "tshark devolvió una línea JSON superior al límite de 1 MiB."
+                    )
+                while b"\n" in stdout_buffer:
+                    raw_line, stdout_buffer = stdout_buffer.split(b"\n", 1)
+                    if len(raw_line) > MAX_EK_LINE_BYTES:
+                        raise TsharkError(
+                            "tshark devolvió una línea JSON superior al límite de 1 MiB."
+                        )
+                    line = raw_line.decode("utf-8", errors="replace")
+                    if '"layers"' not in line:
+                        continue
+                    try:
+                        doc = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    layers = doc.get("layers")
+                    if isinstance(layers, dict):
+                        yield layers
+        returncode = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
+        if returncode != 0:
+            raise TsharkError(
+                "tshark terminó con código %d: %s" % (
+                    returncode,
+                    b"".join(stderr_parts).decode("utf-8", errors="replace").strip()[:500],
+                )
+            )
+    finally:
+        selector.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()

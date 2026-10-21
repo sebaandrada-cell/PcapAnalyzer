@@ -1,0 +1,109 @@
+"""Runtime configuration, overridable via environment variables.
+
+A `backend/.env` file (see .env.example) is loaded first, so credentials like
+ANTHROPIC_API_KEY can live there instead of the shell environment.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import List
+
+from dotenv import load_dotenv
+
+# backend/.env — anchored to this file so it works regardless of cwd.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+# Explicit tshark binary location; auto-discovered when unset.
+TSHARK_PATH_ENV = "TSHARK_PATH"
+
+# Upload / execution limits.
+MAX_UPLOAD_MB = _int_env("MAX_UPLOAD_MB", 200)
+MAX_DECOMPRESSED_MB = _int_env("MAX_DECOMPRESSED_MB", 500)
+TSHARK_TIMEOUT_S = _int_env("TSHARK_TIMEOUT_S", 300)
+API_TOKENS: List[str] = [
+    token.strip()
+    for token in os.environ.get("API_TOKENS", "").split(",")
+    if token.strip()
+]
+API_MAX_REQUESTS_PER_MINUTE = _int_env("API_MAX_REQUESTS_PER_MINUTE", 30)
+API_MAX_JOBS_PER_TOKEN = _int_env("API_MAX_JOBS_PER_TOKEN", 2)
+
+# Shared SaaS infrastructure. Supabase mode is enabled explicitly and requires
+# Auth, Postgres, and a private Storage bucket.
+AUTH_MODE = os.environ.get("AUTH_MODE", "token").strip().lower()
+if AUTH_MODE not in {"token", "supabase"}:
+    raise ValueError("AUTH_MODE must be either 'token' or 'supabase'.")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL", "")
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "pcap-captures")
+SUPABASE_ENABLED = AUTH_MODE == "supabase"
+
+# CORS origins for the future React frontend (comma-separated).
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    ).split(",")
+    if origin.strip()
+]
+
+# Issue-detection thresholds (see CLAUDE.md: >2% retransmissions is critical).
+RETRANS_MIN_PACKETS = _int_env("RETRANS_MIN_PACKETS", 5)   # ignore tiny conversations
+RETRANS_WARN_PCT = float(os.environ.get("RETRANS_WARN_PCT", 1.0))
+RETRANS_CRIT_PCT = float(os.environ.get("RETRANS_CRIT_PCT", 2.0))
+SYN_RST_MAX_DELAY_S = float(os.environ.get("SYN_RST_MAX_DELAY_S", 1.0))
+DNS_SLOW_THRESHOLD_S = float(os.environ.get("DNS_SLOW_THRESHOLD_S", 0.5))
+DNS_NXDOMAIN_MIN = _int_env("DNS_NXDOMAIN_MIN", 3)
+TCP_HANDSHAKE_SLOW_S = float(os.environ.get("TCP_HANDSHAKE_SLOW_S", 0.5))
+MSS_LOW_THRESHOLD = _int_env("MSS_LOW_THRESHOLD", 1300)
+PMTUD_MIN_FULLSIZE_RETRANS = _int_env("PMTUD_MIN_FULLSIZE_RETRANS", 3)
+FRAG_HIGH_PCT = float(os.environ.get("FRAG_HIGH_PCT", 5.0))
+ESP_ONE_WAY_MIN = _int_env("ESP_ONE_WAY_MIN", 3)
+IKE_NO_RESPONSE_MIN = _int_env("IKE_NO_RESPONSE_MIN", 2)
+TOP_TALKERS_LIMIT = _int_env("TOP_TALKERS_LIMIT", 10)
+
+# AI layer (Fase 3). Credentials come from the environment (ANTHROPIC_API_KEY
+# or an `ant auth login` profile); only the model and limits live here.
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-opus-4-8")
+LLM_MAX_TOKENS = _int_env("LLM_MAX_TOKENS", 4096)
+LLM_TIMEOUT_S = _int_env("LLM_TIMEOUT_S", 120)
+# Demo mode: deterministic fake AI responses, no API calls or credentials.
+LLM_DEMO = os.environ.get("LLM_DEMO", "").lower() in ("1", "true", "yes")
+
+# Async analysis queue (Fase 4): in-process worker pool for large captures.
+ANALYZE_WORKERS = _int_env("ANALYZE_WORKERS", 2)
+MAX_QUEUED_JOBS = _int_env("MAX_QUEUED_JOBS", 4)
+MAX_PENDING_CAPTURE_BYTES = _int_env("MAX_PENDING_CAPTURE_BYTES", 1024 * 1024 * 1024)
+MAX_RETAINED_JOBS = _int_env("MAX_RETAINED_JOBS", 20)
+JOB_TTL_S = _int_env("JOB_TTL_S", 3600)
+
+# Bounded in-memory analysis state.
+MAX_CONVERSATIONS = _int_env("MAX_CONVERSATIONS", 20000)
+MAX_TRACKED_TALKERS = _int_env("MAX_TRACKED_TALKERS", 20000)
+MAX_TIME_SERIES_BUCKETS = _int_env("MAX_TIME_SERIES_BUCKETS", 100000)
+MAX_DNS_TRANSACTIONS = _int_env("MAX_DNS_TRANSACTIONS", 20000)
+MAX_HTTP_REQUESTS = _int_env("MAX_HTTP_REQUESTS", 10000)
+MAX_TLS_SESSIONS = _int_env("MAX_TLS_SESSIONS", 10000)
+MAX_TLS_ALERTS = _int_env("MAX_TLS_ALERTS", 5000)
+MAX_FRAGMENT_GROUPS = _int_env("MAX_FRAGMENT_GROUPS", 20000)
+MAX_ICMP_EVENTS = _int_env("MAX_ICMP_EVENTS", 5000)
+MAX_DHCP_TRANSACTIONS = _int_env("MAX_DHCP_TRANSACTIONS", 10000)
+MAX_ISSUES = _int_env("MAX_ISSUES", 5000)
+TCP_ZERO_WINDOW_MIN_EVENTS = _int_env("TCP_ZERO_WINDOW_MIN_EVENTS", 3)
+MAX_ARP_CLAIMS = _int_env("MAX_ARP_CLAIMS", 20000)
+MAX_ARP_MACS_PER_IP = _int_env("MAX_ARP_MACS_PER_IP", 32)
+
+# Packet list returned to the UI (Wireshark-style view), capped for size.
+PACKET_LIST_MAX = _int_env("PACKET_LIST_MAX", 1000)

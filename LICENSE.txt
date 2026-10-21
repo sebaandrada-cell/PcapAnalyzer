@@ -1,0 +1,22 @@
+PcapAnalyzer — Licencia de uso / License
+
+(Plantilla — revísala y ajústala a tus necesidades antes de vender. No es
+asesoramiento legal.)
+
+Copyright (c) 2026. Todos los derechos reservados / All rights reserved.
+
+Se concede al comprador una licencia personal e intransferible para usar y
+ejecutar este software en sus propios equipos. No se permite la redistribución,
+reventa ni publicación del código sin autorización del autor.
+
+EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO. EL AUTOR NO
+SE RESPONSABILIZA DE DAÑOS DERIVADOS DE SU USO.
+
+---
+
+The buyer is granted a personal, non-transferable license to use and run this
+software on their own machines. Redistribution, resale, or publication of the
+source without the author's permission is not permitted.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE AUTHOR IS
+NOT LIABLE FOR ANY DAMAGES ARISING FROM ITS USE.

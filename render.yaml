@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: pcapanalyzer-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: python -m app.render_service
+    healthCheckPath: /health
+    envVars:
+      - key: AUTH_MODE
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: pcap-captures
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "25"
+      - key: MAX_DECOMPRESSED_MB
+        value: "100"
+      - key: API_MAX_REQUESTS_PER_MINUTE
+        value: "30"
+      - key: API_MAX_JOBS_PER_TOKEN
+        value: "1"
+      - key: MAX_QUEUED_JOBS
+        value: "2"
