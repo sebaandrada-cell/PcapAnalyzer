@@ -36,8 +36,16 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: SUPABASE_JWT_SECRET
+      # Postgres connection string. REQUIRED in supabase mode: the backend talks
+      # to Postgres directly for tenants, quotas and the job queue.
+      # Use the shared pooler in SESSION mode (Dashboard -> Connect; host like
+      # aws-N-<region>.pooler.supabase.com:5432). It is reachable over IPv4,
+      # whereas the direct db.<ref>.supabase.co host is IPv6-only unless the
+      # project has the IPv4 add-on.
+      - key: SUPABASE_DB_URL
         sync: false
+      # SUPABASE_JWT_SECRET is only needed for legacy HS256 projects. This
+      # project signs with ES256, which the backend verifies via the public JWKS.
       - key: SUPABASE_STORAGE_BUCKET
         value: pcap-captures
       # ── Optional limits (defaults are sensible) ────────────────
