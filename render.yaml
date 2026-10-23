@@ -1,14 +1,33 @@
+# Render Blueprint — PcapAnalyzer backend (FastAPI + tshark).
+#
+# Deploy:  Render Dashboard → New → Blueprint → connect this GitHub repo.
+# Render reads this file, builds backend/Dockerfile and runs the service.
+#
+# Secrets are marked `sync: false`: Render will NOT read them from here, it
+# prompts for them in the dashboard. Never commit real keys to the repo.
+#
+# The Dockerfile binds uvicorn to $PORT, which Render injects (default 10000).
 services:
   - type: web
-    name: pcapanalyzer-api
+    name: pcapanalyzer-backend
     runtime: docker
-    plan: free
-    region: frankfurt
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerCommand: python -m app.render_service
+    plan: free                 # free spins down when idle (~cold start); bump to starter for always-on
     healthCheckPath: /health
+    autoDeployTrigger: commit   # redeploy on push to the connected branch
     envVars:
+      # ── AI layer ───────────────────────────────────────────────
+      - key: ANTHROPIC_API_KEY
+        sync: false             # set in dashboard; or leave unset and use LLM_DEMO=1
+      - key: LLM_MODEL
+        value: claude-opus-4-8
+      - key: LLM_DEMO
+        value: "0"              # set to "1" for a zero-cost beta (simulated diagnosis)
+      # ── CORS: your Vercel frontend URL(s), comma-separated ─────
+      - key: CORS_ORIGINS
+        sync: false             # e.g. https://pcapanalyzer.vercel.app
+      # ── Auth (the frontend uses Supabase) ──────────────────────
       - key: AUTH_MODE
         value: supabase
       - key: SUPABASE_URL
@@ -17,19 +36,10 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: SUPABASE_DB_URL
+      - key: SUPABASE_JWT_SECRET
         sync: false
       - key: SUPABASE_STORAGE_BUCKET
         value: pcap-captures
-      - key: CORS_ORIGINS
-        sync: false
+      # ── Optional limits (defaults are sensible) ────────────────
       - key: MAX_UPLOAD_MB
-        value: "25"
-      - key: MAX_DECOMPRESSED_MB
-        value: "100"
-      - key: API_MAX_REQUESTS_PER_MINUTE
-        value: "30"
-      - key: API_MAX_JOBS_PER_TOKEN
-        value: "1"
-      - key: MAX_QUEUED_JOBS
-        value: "2"
+        value: "200"
