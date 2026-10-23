@@ -98,6 +98,46 @@ def test_supabase_jwt_maps_user_to_tenant(monkeypatch):
     assert principal.auth_mode == "supabase"
 
 
+def test_authorization_header_uses_supabase_validation_in_supabase_mode(monkeypatch):
+    """Regression: the middleware path must honor AUTH_MODE=supabase.
+
+    authenticate_authorization_header used to validate every bearer token
+    against the static API_TOKENS list, so a logged-in Supabase user got
+    "define API_TOKENS en el backend" (503) when API_TOKENS was empty.
+    """
+    from app import auth
+
+    expected = auth.Principal(
+        user_id="user-1", tenant_id="tenant-1", auth_mode="supabase"
+    )
+    charged = []
+    monkeypatch.setattr(config, "SUPABASE_ENABLED", True)
+    monkeypatch.setattr(config, "API_TOKENS", [])
+    monkeypatch.setattr(
+        auth, "_validate_supabase_token", lambda token: expected
+    )
+    monkeypatch.setattr(
+        auth.shared_db, "consume_request_quota", lambda tenant: charged.append(tenant)
+    )
+
+    principal = auth.authenticate_authorization_header(
+        "Bearer a.supabase.jwt", charge=True
+    )
+    assert principal is expected
+    assert charged == ["tenant-1"]
+
+    # Polling endpoints are not charged against the request quota.
+    charged.clear()
+    auth.authenticate_authorization_header("Bearer a.supabase.jwt", charge=False)
+    assert charged == []
+
+    # No / malformed header is still a plain 401 in supabase mode.
+    for header in (None, "", "Basic abc", "Bearer"):
+        with pytest.raises(HTTPException) as excinfo:
+            auth.authenticate_authorization_header(header, charge=True)
+        assert excinfo.value.status_code == 401
+
+
 def test_supabase_rejects_service_role_jwt(monkeypatch):
     from types import SimpleNamespace
     from cryptography.hazmat.primitives.asymmetric import rsa

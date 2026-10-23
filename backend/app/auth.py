@@ -94,7 +94,12 @@ def authenticate_authorization_header(
     scheme, separator, token = authorization.partition(" ")
     if not separator or scheme.lower() != "bearer" or not token:
         return _authenticate(None, charge=charge)
-    return _validate_token(token, charge=charge)
+    # Go through _authenticate so AUTH_MODE is honored: calling _validate_token
+    # directly checked Supabase JWTs against the static API_TOKENS list.
+    return _authenticate(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
+        charge=charge,
+    )
 
 
 def _authenticate(
