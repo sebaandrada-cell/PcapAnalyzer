@@ -1,53 +1,68 @@
-# Render Blueprint — PcapAnalyzer backend (FastAPI + tshark).
+# Render Blueprint — PcapAnalyzer hosted backend (FastAPI + tshark + queue worker).
 #
-# Deploy:  Render Dashboard → New → Blueprint → connect this GitHub repo.
-# Render reads this file, builds backend/Dockerfile and runs the service.
+# This file DOCUMENTS the live service `pcapanalyzer-api`, which was created by
+# hand in the Render dashboard. It is not linked to a Blueprint instance, so
+# editing it does not change the running service: change variables in
+# Dashboard -> pcapanalyzer-api -> Environment. If you ever create a Blueprint
+# instance from it, Render matches services by name and will start managing
+# the live one, so review the values below first.
 #
-# Secrets are marked `sync: false`: Render will NOT read them from here, it
-# prompts for them in the dashboard. Never commit real keys to the repo.
-#
-# The Dockerfile binds uvicorn to $PORT, which Render injects (default 10000).
+# Secrets are `sync: false`: they are never read from this file. Set them in
+# the dashboard and never commit real values.
 services:
   - type: web
-    name: pcapanalyzer-backend
+    name: pcapanalyzer-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free                 # free spins down when idle (~cold start); bump to starter for always-on
+    # One process tree: the API (uvicorn on $PORT) plus the Supabase queue
+    # worker. Overrides the Dockerfile CMD, which runs only the API.
+    dockerCommand: python -m app.render_service
+    plan: free                  # verify against the plan in the dashboard
     healthCheckPath: /health
     autoDeployTrigger: commit   # redeploy on push to the connected branch
     envVars:
-      # ── AI layer ───────────────────────────────────────────────
-      - key: ANTHROPIC_API_KEY
-        sync: false             # set in dashboard; or leave unset and use LLM_DEMO=1
-      - key: LLM_MODEL
-        value: claude-opus-4-8
-      - key: LLM_DEMO
-        value: "0"              # set to "1" for a zero-cost beta (simulated diagnosis)
-      # ── CORS: your Vercel frontend URL(s), comma-separated ─────
-      - key: CORS_ORIGINS
-        sync: false             # e.g. https://pcapanalyzer.vercel.app
-      # ── Auth (the frontend uses Supabase) ──────────────────────
+      # ── Auth / data (Supabase) ─────────────────────────────────
       - key: AUTH_MODE
         value: supabase
       - key: SUPABASE_URL
-        sync: false
+        value: https://pmmnobjhjfafgdccsywy.supabase.co
       - key: SUPABASE_ANON_KEY
-        sync: false
+        sync: false             # public key, but kept out of the repo
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Postgres connection string. REQUIRED in supabase mode: the backend talks
-      # to Postgres directly for tenants, quotas and the job queue.
-      # Use the shared pooler in SESSION mode (Dashboard -> Connect; host like
-      # aws-N-<region>.pooler.supabase.com:5432). It is reachable over IPv4,
-      # whereas the direct db.<ref>.supabase.co host is IPv6-only unless the
-      # project has the IPv4 add-on.
+        sync: false             # SECRET: bypasses RLS. Rotate if it ever leaks.
+      # Postgres URI. REQUIRED in supabase mode (tenants, quotas, job queue).
+      # Use the shared pooler in SESSION mode (aws-N-<region>.pooler.supabase.com
+      # :5432, user postgres.<project-ref>): reachable over IPv4, whereas the
+      # direct db.<ref> host is IPv6-only without the IPv4 add-on.
       - key: SUPABASE_DB_URL
-        sync: false
-      # SUPABASE_JWT_SECRET is only needed for legacy HS256 projects. This
-      # project signs with ES256, which the backend verifies via the public JWKS.
+        sync: false             # SECRET: contains the database password
       - key: SUPABASE_STORAGE_BUCKET
         value: pcap-captures
-      # ── Optional limits (defaults are sensible) ────────────────
+      # SUPABASE_JWT_SECRET is not needed: tokens are ES256 and verified
+      # against the project's public JWKS.
+      # ── CORS: exact origin match, no trailing slash, no wildcards ──
+      - key: CORS_ORIGINS
+        value: https://pcap-analyzer-seven.vercel.app
+      # ── AI layer ───────────────────────────────────────────────
+      # Demo mode simulates the diagnosis at zero cost. To use the real model,
+      # remove LLM_DEMO and set ANTHROPIC_API_KEY (billed to your account per
+      # diagnosis; set a spend limit in the Anthropic console first).
+      - key: LLM_DEMO
+        value: "1"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: claude-opus-4-8
+      # ── Limits for the hosted beta (free-plan sized) ───────────
+      # Keep MAX_UPLOAD_MB at or below the Storage bucket limit (200 MiB).
       - key: MAX_UPLOAD_MB
-        value: "200"
+        value: "25"
+      - key: MAX_DECOMPRESSED_MB
+        value: "100"
+      - key: MAX_QUEUED_JOBS
+        value: "2"
+      - key: API_MAX_REQUESTS_PER_MINUTE
+        value: "30"
+      - key: API_MAX_JOBS_PER_TOKEN
+        value: "1"
