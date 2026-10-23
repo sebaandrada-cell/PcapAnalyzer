@@ -89,13 +89,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.include_router(ai_router)
 
 
@@ -123,6 +116,14 @@ async def authenticate_api_requests(
                 headers=exc.headers,
             )
     return await call_next(request)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")

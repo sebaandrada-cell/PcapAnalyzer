@@ -206,7 +206,7 @@ export interface QueryResponse {
   model: string
 }
 
-const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (supabaseClient) {

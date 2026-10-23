@@ -27,6 +27,18 @@ def test_rejects_invalid_bearer_token(client):
     assert response.status_code == 401
 
 
+def test_cors_headers_are_included_on_authentication_errors(client):
+    response = client.post(
+        "/analyze",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Authorization": "",
+        },
+    )
+    assert response.status_code == 401
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
 def test_health_reports_auth_configuration(client):
     data = client.get("/health").json()
     assert data["auth"]["enabled"] is True

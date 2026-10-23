@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { API_BASE } from '../api'
 import { useSettings } from '../settings'
 
 interface HealthTshark {
@@ -27,7 +28,11 @@ export default function UploadScreen({ analyzing, error, onFile }: Props) {
   const [maxUploadMB, setMaxUploadMB] = useState(200)
 
   useEffect(() => {
-    fetch('/health')
+    fetch(`${API_BASE}/health`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Backend health check returned ${response.status}`)
+        return response
+      })
       .then((r) => r.json())
       .then((h: HealthResponse) => {
         if (h.tshark && !h.tshark.available) setTsharkHint(h.tshark.install_hint)

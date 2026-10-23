@@ -7,3 +7,7 @@ node_modules/
 frontend/dist/
 .env
 .DS_Store
+
+# Local secrets and settings
+backend/.webui_secret_key
+.claude/settings.local.json
