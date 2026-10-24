@@ -1,6 +1,6 @@
 # Plan de difusión — PcapAnalyzer (v2 · 24-oct-2026)
 
-**Producto:** PcapAnalyzer 1.1.0 · descarga self-hosted · 5 € pago único
+**Producto:** PcapAnalyzer 1.2.0 · descarga self-hosted · 5 € pago único
 **Compra:** https://sebaandrada6.gumroad.com/l/hspgx
 **Landing (ES/EN, pública):** https://claude.ai/artifact/NAX5Yw8wfuP86odEKtS7uv
 **Público:** sysadmins, MSPs y NOC de primer nivel. Gente que ya usa Wireshark y no
@@ -12,8 +12,8 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
-| Paquete 1.1.0 en Gumroad, sin secretos ni datos internos | ✔ (`scripts/build-release.sh`) |
-| Paquete 1.1.1 construido (arregla el inglés del modo demo), **sin subir a Gumroad** | ☐ pendiente de OK del dueño |
+| Paquete 1.2.0 en Gumroad (18 detectores, filtros estilo Wireshark), sin secretos ni datos internos | ✔ (`scripts/build-release.sh`) |
+| Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
 | `docker compose` probado de punta a punta (19 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
 | Landing bilingüe con el comando correcto (`./start.sh`) | ✔ versión 7 |
 | Ficha de Gumroad alineada con el producto | ✔ |
@@ -105,9 +105,9 @@ qué falla, por qué y cuál es el siguiente paso. Está pensada para MSPs, sysa
 de primer nivel que no quieren pasar media hora leyendo Wireshark paquete a paquete.
 
 Qué hace:
-- Detecta 11 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones TCP,
-  ventana cero, PMTUD, fragmentación, DNS sin respuesta o lento, fallos TLS, túneles VPN
-  e IPs duplicadas.
+- Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK
+  duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación,
+  errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
 - Diagnóstico con IA: qué pasa, causa probable y siguiente paso. Usa tu propia clave de
   Anthropic; sin clave hay un modo demo.
 - Escribes la consulta en lenguaje natural y la traduce a un filtro de Wireshark.
@@ -135,9 +135,9 @@ I kept scrolling through Wireshark packet by packet for routine troubleshooting,
 built PcapAnalyzer: drop in a .pcap/.pcapng (gzip too) and it tells you what is wrong,
 why, and what to check next.
 
-- 11 detectors: firewall blocks (SYN→RST), TCP retransmissions, zero window, PMTUD
-  black holes, IP fragmentation, unanswered/slow DNS, TLS handshake failures, VPN tunnel
-  problems, duplicate IPs.
+- 18 detectors: firewall blocks (SYN→RST), retransmissions, duplicate ACKs, loss and
+  reordering, zero/full window, PMTUD black holes, IP fragmentation, ICMP errors,
+  unanswered/slow DNS, TLS handshake failures, VPN tunnel problems, duplicate IPs.
 - AI diagnosis (what's happening / probable cause / next step). You bring your own
   Anthropic key; without one it runs a demo mode with simulated output.
 - Natural-language query → Wireshark display filter.

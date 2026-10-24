@@ -19,9 +19,9 @@ Verlo en Wireshark es cuestión de saber qué buscar. Encontrarlo entre decenas 
 Por eso he hecho PcapAnalyzer: subes un .pcap o .pcapng (también .gz) y te dice qué falla, por qué y qué mirar después.
 
 Lo que hace:
-- Detecta 11 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones TCP, ventana cero, PMTUD, fragmentación, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
+- Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación, errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
 - Diagnóstico en lenguaje claro: qué pasa, causa probable y siguiente paso. Con tu propia clave de Anthropic; sin clave funciona en modo demo, con texto generado sin IA.
-- Consultas en lenguaje natural que se traducen a un filtro de Wireshark.
+- Filtros estilo Wireshark sobre la lista de paquetes y consultas en lenguaje natural que se traducen a un filtro.
 - Informe en PDF, interfaz en español e inglés, tema claro y oscuro.
 
 Se ejecuta en tu máquina con Docker, con un solo comando (./start.sh). Las capturas, que suelen llevar credenciales y datos de clientes, no salen de tu equipo. Solo si activas la IA se envía un resumen en JSON, nunca el pcap.
@@ -49,9 +49,9 @@ Spotting it in Wireshark is a matter of knowing what to look for. Finding it amo
 That is why I built PcapAnalyzer: you upload a .pcap or .pcapng (gzip works too) and it tells you what is failing, why, and what to check next.
 
 What it does:
-- Detects 11 kinds of problem: firewall blocks (SYN→RST), TCP retransmissions, zero window, PMTUD black holes, IP fragmentation, unanswered or slow DNS, TLS failures, VPN tunnel issues and duplicate IPs.
+- Detects 18 kinds of problem: firewall blocks (SYN→RST), retransmissions and duplicate ACKs, loss and reordering, zero or full window, PMTUD black holes, IP fragmentation, ICMP errors, unanswered or slow DNS, TLS failures, VPN tunnel issues and duplicate IPs.
 - A plain-language diagnosis: what is happening, the likely cause and the next step. It uses your own Anthropic key; without one it runs in a demo mode with text generated without AI.
-- Natural-language questions that turn into a Wireshark display filter.
+- Wireshark-style display filters on the packet list, and natural-language questions that turn into a filter.
 - PDF report, Spanish and English interface, light and dark theme.
 
 It runs on your own machine with Docker, with a single command (./start.sh). Captures, which often hold credentials and customer data, do not leave your computer. Only if you turn on the AI is a JSON summary sent, never the pcap.
