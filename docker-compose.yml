@@ -8,6 +8,9 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-claude-opus-4-8}
+      # Demo mode: simulated AI answers, no key and no cost. It takes priority
+      # over a real key, so set LLM_DEMO=0 once ANTHROPIC_API_KEY is filled in.
+      - LLM_DEMO=${LLM_DEMO:-}
       - AUTH_MODE=${AUTH_MODE:-token}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}

@@ -11,3 +11,6 @@ frontend/dist/
 # Local secrets and settings
 backend/.webui_secret_key
 .claude/settings.local.json
+
+# Built customer downloads (made by scripts/build-release.sh) never go in git.
+release/

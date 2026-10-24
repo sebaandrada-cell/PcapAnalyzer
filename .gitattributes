@@ -1,0 +1,16 @@
+# Files that live in the repository but must NOT ship in the customer download.
+# scripts/build-release.sh builds the bundle with `git archive`, which honors
+# export-ignore, and then verifies the result.
+
+# Marketing / internal planning
+PLAN-DIFUSION.md  export-ignore
+landing.html      export-ignore
+
+# Our own hosted beta (names our infrastructure) and agent tooling
+render.yaml       export-ignore
+CLAUDE.md         export-ignore
+.claude           export-ignore
+
+# Build tooling and this file
+scripts           export-ignore
+.gitattributes    export-ignore
