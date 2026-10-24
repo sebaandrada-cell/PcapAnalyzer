@@ -272,8 +272,24 @@ button.primary {
 }
 .header .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   flex: 0 0 auto;
+}
+.header h1 {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .header {
+    flex-direction: column;
+  }
+  .header .actions {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .header .actions button {
+    flex: 1 1 140px;
+  }
 }
 .export-error {
   color: var(--status-critical);
