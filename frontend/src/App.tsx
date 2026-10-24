@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AnalysisResult, Issue, QueryResponse, TopTalker } from './api'
 import { ASYNC_THRESHOLD_BYTES, analyzePcap, analyzePcapAsync, queryFilter } from './api'
 import CaptureProperties from './components/CaptureProperties'
 import ConversationModal, { type Selection } from './components/ConversationModal'
+import DemoBanner from './components/DemoBanner'
 import DiagnosisPanel from './components/DiagnosisPanel'
 import DnsQueries from './components/DnsQueries'
 import DhcpLeases from './components/DhcpLeases'
@@ -21,12 +22,15 @@ import TopTalkers from './components/TopTalkers'
 import TrafficChart from './components/TrafficChart'
 import UploadScreen from './components/UploadScreen'
 import SupabaseAuthGate from './components/SupabaseAuthGate'
+import { loadDemo, useDemoRoute, type DemoData } from './demo'
 import { useSettings } from './settings'
 import { isSupabaseConfigured } from './supabase'
 
-function Dashboard() {
+// `demo` is only passed by the public demo: the dashboard starts with the
+// pre-computed sample analysis and nothing talks to the backend.
+function Dashboard({ demo }: { demo?: DemoData }) {
   const { t, lang } = useSettings()
-  const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [result, setResult] = useState<AnalysisResult | null>(demo?.analysis ?? null)
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -52,6 +56,10 @@ function Dashboard() {
   const handleQuery = useCallback(
     (question: string) => {
       if (!result) return
+      if (demo) {
+        setQueryError(t('demo.queryDisabled'))
+        return
+      }
       setQueryLoading(true)
       setQueryError(null)
       queryFilter(question, result, lang)
@@ -59,7 +67,7 @@ function Dashboard() {
         .catch((err: Error) => setQueryError(err.message))
         .finally(() => setQueryLoading(false))
     },
-    [result, lang],
+    [result, lang, demo, t],
   )
 
   const clearQuery = useCallback(() => {
@@ -103,9 +111,11 @@ function Dashboard() {
   return (
     <>
       <SettingsBar />
+      {demo && <DemoBanner />}
       <Header
         result={result}
         diagnosis={diagnosis}
+        demo={Boolean(demo)}
         onReset={() => {
           setResult(null)
           setSelection(null)
@@ -147,7 +157,7 @@ function Dashboard() {
         highlightedIds={query ? new Set(query.matched_issue_ids) : null}
         onSelect={handleIssueSelect}
       />
-      <DiagnosisPanel analysis={result} onGenerated={setDiagnosis} />
+      <DiagnosisPanel analysis={result} onGenerated={setDiagnosis} demoText={demo?.diagnosis[lang]} />
       <div className="footer-note">
         {t('footer.note', { version: result.meta.engine_version })}
       </div>
@@ -163,8 +173,44 @@ function Dashboard() {
   )
 }
 
+// Fetches the pre-computed sample analysis, then shows it in the normal dashboard.
+function DemoView() {
+  const { t } = useSettings()
+  const [data, setData] = useState<DemoData | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    loadDemo()
+      .then((loaded) => active && setData(loaded))
+      .catch(() => active && setFailed(true))
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (data) return <Dashboard demo={data} />
+  return (
+    <>
+      <SettingsBar />
+      <div className="upload-wrap">
+        <p className={failed ? 'upload-error' : 'sub'}>{t(failed ? 'demo.error' : 'demo.loading')}</p>
+        {failed && (
+          <a className="demo-signin" href="#">
+            {t('demo.back')}
+          </a>
+        )}
+      </div>
+    </>
+  )
+}
+
 export default function App() {
+  const demoRoute = useDemoRoute()
   if (!isSupabaseConfigured) return <Dashboard />
+  // The demo only exists in the hosted build (Supabase configured): the
+  // self-hosted download keeps its single token-protected dashboard.
+  if (demoRoute) return <DemoView />
   return (
     <SupabaseAuthGate>
       <Dashboard />

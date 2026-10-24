@@ -118,6 +118,9 @@ export default function SupabaseAuthGate({ children }: Props) {
             >
               {t(signUp ? 'auth.haveAccount' : 'auth.needAccount')}
             </button>
+            <a className="demo-link" href="#demo">
+              {t('auth.tryDemo')}
+            </a>
           </form>
         </main>
       </>

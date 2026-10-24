@@ -840,3 +840,46 @@ button.link {
   font-size: 12px;
   text-align: center;
 }
+
+/* ---- Public demo (hosted build only) ---- */
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  background: var(--accent-wash);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+.demo-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+.demo-buy {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.demo-signin,
+.demo-link {
+  color: var(--accent);
+}
+.demo-link {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 14px;
+}

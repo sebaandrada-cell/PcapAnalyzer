@@ -27,6 +27,23 @@ class TestDemoDiagnosis:
         result = demo_diagnosis(analysis)
         assert "no presenta problemas" in result["diagnosis"]
 
+    def test_english_next_steps_are_in_english(self):
+        """Regression: the English text used to end with Spanish recommendations."""
+        from app.llm.demo import _NEXT_STEP_BY_TYPE, _NEXT_STEP_BY_TYPE_EN
+
+        analysis = make_analysis()  # tcp_retransmissions issues
+        text = demo_diagnosis(analysis, "en")["diagnosis"]
+        assert _NEXT_STEP_BY_TYPE_EN["tcp_retransmissions"] in text
+        assert _NEXT_STEP_BY_TYPE["tcp_retransmissions"] not in text
+        spanish = demo_diagnosis(analysis, "es")["diagnosis"]
+        assert _NEXT_STEP_BY_TYPE["tcp_retransmissions"] in spanish
+
+    def test_next_step_languages_cover_the_same_issue_types(self):
+        from app.llm.demo import _NEXT_STEP_BY_TYPE, _NEXT_STEP_BY_TYPE_EN
+
+        assert set(_NEXT_STEP_BY_TYPE_EN) == set(_NEXT_STEP_BY_TYPE)
+        assert all(_NEXT_STEP_BY_TYPE_EN.values())
+
 
 class TestDemoQuery:
     def test_keyword_mapping_and_matches(self):

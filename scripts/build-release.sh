@@ -51,7 +51,8 @@ echo "Verificando $OUT ..."
 
 # ── Must NOT ship ────────────────────────────────────────────────────────
 for p in .env backend/.env .git .claude CLAUDE.md PLAN-DIFUSION.md landing.html \
-         render.yaml scripts release backend/.venv frontend/node_modules frontend/dist; do
+         render.yaml scripts release backend/.venv frontend/node_modules frontend/dist \
+         frontend/public/demo marketing; do
   [ -e "$ROOT/$p" ] && bad "no debería incluirse: $p"
 done
 found_env="$(find "$ROOT" -name '.env' -o -name '*.pem' -o -name '*.key' -o -name '.webui_secret_key' 2>/dev/null | head -5)"

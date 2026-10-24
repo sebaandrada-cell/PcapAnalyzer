@@ -17,3 +17,9 @@ scripts           export-ignore
 
 # CI workflows are repo infrastructure, not part of the product.
 .github           export-ignore
+
+# Public demo data (hosted build only); the self-hosted download does not use it.
+frontend/public/demo  export-ignore
+
+# Marketing screenshots, not part of the product.
+marketing  export-ignore

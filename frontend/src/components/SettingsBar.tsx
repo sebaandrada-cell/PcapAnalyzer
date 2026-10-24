@@ -11,7 +11,9 @@ export default function SettingsBar() {
   useEffect(() => {
     if (!supabaseClient) return
     supabaseClient.auth.getUser().then(({ data, error }) => {
-      if (error) setAuthError(error.message)
+      // Having no session (login screen, public demo) is the normal state of a
+      // visitor, not an error worth showing.
+      if (error && error.name !== 'AuthSessionMissingError') setAuthError(error.message)
       setUserEmail(data.user?.email ?? null)
     }).catch((error: unknown) => {
       setAuthError(error instanceof Error ? error.message : t('auth.failed'))

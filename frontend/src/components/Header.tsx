@@ -8,9 +8,11 @@ interface Props {
   result: AnalysisResult
   diagnosis: string | null
   onReset: () => void
+  /** Public demo: there is no backend to export from or capture to replace. */
+  demo?: boolean
 }
 
-export default function Header({ result, diagnosis, onReset }: Props) {
+export default function Header({ result, diagnosis, onReset, demo = false }: Props) {
   const { t } = useSettings()
   const { file, summary, meta } = result
   const [exporting, setExporting] = useState(false)
@@ -39,10 +41,15 @@ export default function Header({ result, diagnosis, onReset }: Props) {
         </div>
       </div>
       <div className="actions">
-        <button onClick={onReset}>{t('header.analyzeAnother')}</button>
-        <button onClick={handleExport} disabled={exporting} title={t('header.exportTitle')}>
-          {exporting ? t('header.exporting') : t('header.export')}
-        </button>
+        {/* In the public demo the banner above already carries the purchase link. */}
+        {!demo && (
+          <>
+            <button onClick={onReset}>{t('header.analyzeAnother')}</button>
+            <button onClick={handleExport} disabled={exporting} title={t('header.exportTitle')}>
+              {exporting ? t('header.exporting') : t('header.export')}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

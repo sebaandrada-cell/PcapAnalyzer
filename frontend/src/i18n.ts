@@ -33,6 +33,17 @@ const es: Dict = {
     needAccount: 'Crear una cuenta',
     confirmEmail: 'Revisa tu correo para confirmar la cuenta antes de iniciar sesión.',
     failed: 'No se pudo completar la autenticación.',
+    tryDemo: 'Ver una demo sin registrarme',
+  },
+  demo: {
+    banner:
+      'Demo con una captura de ejemplo. Así trabaja PcapAnalyzer con tus capturas, que en la versión completa se analizan en tu propia máquina.',
+    buy: 'Comprar · 5 €',
+    signIn: 'Iniciar sesión',
+    queryDisabled: 'Las consultas en lenguaje natural no están disponibles en la demo; sí en la versión completa.',
+    loading: 'Cargando la demo…',
+    error: 'No se pudo cargar la demo.',
+    back: 'Volver',
   },
   common: { close: 'Cerrar', clear: 'Limpiar', retry: 'Reintentar' },
   upload: {
@@ -276,6 +287,17 @@ const en: Dict = {
     needAccount: 'Create an account',
     confirmEmail: 'Check your email to confirm the account before signing in.',
     failed: 'Authentication could not be completed.',
+    tryDemo: 'See a demo without signing up',
+  },
+  demo: {
+    banner:
+      'Demo with a sample capture. This is how PcapAnalyzer works on your captures, which the full version analyzes on your own machine.',
+    buy: 'Buy · €5',
+    signIn: 'Sign in',
+    queryDisabled: 'Natural-language queries are not available in the demo; they are in the full version.',
+    loading: 'Loading the demo…',
+    error: 'The demo could not be loaded.',
+    back: 'Back',
   },
   common: { close: 'Close', clear: 'Clear', retry: 'Retry' },
   upload: {

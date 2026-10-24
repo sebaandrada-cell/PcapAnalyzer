@@ -40,11 +40,43 @@ _NEXT_STEP_BY_TYPE = {
                           "tarda demasiado.",
 }
 
+# English counterpart of _NEXT_STEP_BY_TYPE. Keep both dicts in sync: a missing
+# key silently drops that issue's step from the English text (tests enforce it).
+_NEXT_STEP_BY_TYPE_EN = {
+    "tcp_syn_rst": "Check the firewall rules between the hosts involved and "
+                   "confirm the destination port is listening.",
+    "tcp_retransmissions": "Check for packet loss along the path (interface errors, "
+                           "duplex, saturated links) between the endpoints.",
+    "ip_duplicate": "Find the two MACs announcing the same IP and fix the duplicate "
+                    "address (or investigate possible ARP spoofing).",
+    "ike_no_response": "Verify that the VPN gateway is up and that UDP 500/4500 is "
+                       "not blocked along the path.",
+    "esp_one_way": "Check the state of the IPsec SAs at both ends and the return "
+                   "routing of the tunnel.",
+    "ip_fragments_incomplete": "Look for filters that drop IP fragments and review "
+                               "the MTU of the intermediate links.",
+    "pmtud_blackhole": "Allow ICMP type 3/code 4 on the firewalls along the path or "
+                       "adjust MSS clamping on the router.",
+    "dns_unanswered": "Check the availability of the DNS server and that UDP 53 is "
+                      "not filtered.",
+    "dns_slow": "Measure the latency to the DNS server and consider using a closer "
+                "resolver.",
+    "dns_servfail": "Review the DNS server logs: broken zone, upstream down or failed "
+                    "DNSSEC validation.",
+    "tls_handshake_failure": "Compare the TLS versions and cipher suites supported by "
+                             "client and server.",
+    "tcp_zero_window": "Check the load on the receiving application: it is not "
+                       "draining its buffer in time.",
+    "tcp_slow_handshake": "Measure the RTT to the server and its load: the SYN-ACK "
+                          "takes too long.",
+}
+
 DEMO_MARK = "_(modo demo: texto generado sin IA — configura ANTHROPIC_API_KEY para el diagnóstico real)_"
 
 # Language-specific scaffolding. The interpolated evidence (issue titles and
-# details) comes from the detectors and stays in their language (Spanish);
-# demo mode is a fallback for trying the UI without an API key.
+# details) comes from the detectors, which provide Spanish text plus English
+# title_en/detail_en; demo mode is a fallback for trying the UI without an API
+# key.
 _DEMO = {
     "es": {
         "h": ("Qué está pasando", "Causa probable", "Siguiente paso recomendado"),
@@ -102,9 +134,10 @@ def demo_diagnosis(analysis: AnalysisResult, lang: str = "es") -> Dict[str, Any]
             (issue.title_en if english and issue.title_en else issue.title).lower()
             for issue in issues
         )
+        next_steps = _NEXT_STEP_BY_TYPE_EN if english else _NEXT_STEP_BY_TYPE
         steps = []
         for issue in issues:
-            step = _NEXT_STEP_BY_TYPE.get(issue.type)
+            step = next_steps.get(issue.type)
             if step and step not in steps:
                 steps.append(step)
         if not steps:
