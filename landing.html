@@ -373,7 +373,7 @@
         <div class="n" data-k="step1.n">Paso 01</div>
         <h3 data-k="step1.h3">Arranca</h3>
         <p data-k="step1.p">Un comando y la app corre en tu equipo.</p>
-        <code>docker compose up --build</code>
+        <code>./start.sh</code>
       </div>
       <div class="step">
         <div class="n" data-k="step2.n">Paso 02</div>
@@ -434,7 +434,7 @@
     <div class="section-head"><p class="eyebrow" data-k="faq.eyebrow">Dudas rápidas</p><h2 data-k="faq.h2">Antes de comprar.</h2></div>
     <div class="faq">
       <details open><summary data-k="faq.q1">¿Necesito una clave de API para usarlo?</summary><p data-k="faq.a1">No es obligatoria. Sin clave, la app funciona con un modo demo que simula el diagnóstico a partir del propio análisis. Si quieres el diagnóstico con IA real, pones tu propia clave de Anthropic (el coste va a tu cuenta, ~0,05–0,10&nbsp;€ por diagnóstico).</p></details>
-      <details><summary data-k="faq.q2">¿Qué necesito para ejecutarlo?</summary><p data-k="faq.a2">Docker y Docker Compose. Un solo comando (<span style="font-family:var(--mono)">docker compose up --build</span>) levanta todo y abres <span style="font-family:var(--mono)">localhost:8080</span>. Incluye una guía de inicio paso a paso.</p></details>
+      <details><summary data-k="faq.q2">¿Qué necesito para ejecutarlo?</summary><p data-k="faq.a2">Docker y Docker Compose. Un solo comando (<span style="font-family:var(--mono)">./start.sh</span>; en Windows, desde Git Bash o WSL) lo levanta todo y te da tu token de acceso. Abres <span style="font-family:var(--mono)">localhost:8080</span>, lo pegas y listo. Incluye una guía de inicio paso a paso.</p></details>
       <details><summary data-k="faq.q3">¿Mis capturas son privadas?</summary><p data-k="faq.a3">Sí. Todo el análisis ocurre en tu máquina y el archivo se descarta al terminar. Solo si activas la IA se envía un resumen JSON de métricas — nunca los paquetes ni el pcap.</p></details>
       <details><summary data-k="faq.q4">¿Recibo actualizaciones?</summary><p data-k="faq.a4">La descarga incluye el código completo, así que es tuyo para ejecutar y adaptar. Las mejoras futuras se publican como nuevas versiones.</p></details>
     </div>
@@ -559,7 +559,7 @@
       "faq.q1": "Do I need an API key to use it?",
       "faq.a1": "Not required. Without a key, the app runs a demo mode that simulates the diagnosis from the analysis itself. For a real AI diagnosis, you add your own Anthropic key (the cost goes to your account, ~€0.05–0.10 per diagnosis).",
       "faq.q2": "What do I need to run it?",
-      "faq.a2": 'Docker and Docker Compose. A single command (<span style="font-family:var(--mono)">docker compose up --build</span>) brings everything up and you open <span style="font-family:var(--mono)">localhost:8080</span>. A step-by-step guide is included.',
+      "faq.a2": 'Docker and Docker Compose. A single command (<span style="font-family:var(--mono)">./start.sh</span>; on Windows, from Git Bash or WSL) brings everything up and gives you your access token. Open <span style="font-family:var(--mono)">localhost:8080</span>, paste it and you are done. A step-by-step guide is included.',
       "faq.q3": "Are my captures private?",
       "faq.a3": "Yes. All analysis happens on your machine and the file is discarded when done. Only if you enable AI is a JSON metrics summary sent — never the packets or the pcap.",
       "faq.q4": "Do I get updates?",
