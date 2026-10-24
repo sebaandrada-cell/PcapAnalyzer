@@ -14,3 +14,6 @@ CLAUDE.md         export-ignore
 # Build tooling and this file
 scripts           export-ignore
 .gitattributes    export-ignore
+
+# CI workflows are repo infrastructure, not part of the product.
+.github           export-ignore
