@@ -73,6 +73,14 @@ class TcpConversation(BaseModel):
     mss_client: Optional[int] = None
     mss_server: Optional[int] = None
     handshake_rtt_ms: Optional[float] = None
+    # Wireshark "SEQ/ACK analysis" counters
+    dup_acks: int = 0
+    out_of_order: int = 0
+    lost_segments: int = 0
+    window_full: int = 0
+    resets_midstream: int = 0
+    rtt_avg_ms: Optional[float] = None  # tcp.analysis.ack_rtt
+    rtt_max_ms: Optional[float] = None
 
 
 class UdpConversation(BaseModel):
@@ -115,6 +123,20 @@ class PacketRow(BaseModel):
     length: int
     info: str
     stream: Optional[int] = None  # tcp.stream id (None for non-TCP)
+    # Extra per-packet fields (all optional: absent for protocols without them).
+    sport: Optional[int] = None
+    dport: Optional[int] = None
+    ttl: Optional[int] = None
+    tcp_flags: List[str] = Field(default_factory=list)  # SYN, ACK, RST, FIN, PSH
+    seq: Optional[int] = None  # relative tcp.seq
+    ack: Optional[int] = None  # relative tcp.ack
+    win: Optional[int] = None  # calculated window size
+    payload: Optional[int] = None  # tcp.len
+    rtt_ms: Optional[float] = None  # tcp.analysis.ack_rtt
+    # Wireshark TCP-analysis flags raised on this packet (see engine._ANALYSIS_FLAGS)
+    analysis: List[str] = Field(default_factory=list)
+    expert: Optional[str] = None  # highest expert severity: error|warning|note|chat
+    expert_message: Optional[str] = None
 
 
 class PacketList(BaseModel):
@@ -179,6 +201,26 @@ class DhcpLeaseRow(BaseModel):
     latency_ms: Optional[float] = None
 
 
+ExpertSeverity = Literal["error", "warning", "note", "chat"]
+
+
+class ExpertEntry(BaseModel):
+    """One line of Wireshark's "Expert Information" (grouped by what it says)."""
+
+    severity: ExpertSeverity
+    group: str  # Sequence, Checksum, Malformed, Protocol, Security...
+    summary: str
+    count: int
+    first_packet: int
+
+
+class ResolvedName(BaseModel):
+    """IP -> name learned from DNS answers in the capture (Resolved Addresses)."""
+
+    address: str
+    name: str
+
+
 class Tunnel(BaseModel):
     """VPN/tunnel traffic identified passively (ESP, IKE, WireGuard, ...)."""
 
@@ -227,4 +269,6 @@ class AnalysisResult(BaseModel):
     http_requests: List[HttpRequestRow] = Field(default_factory=list)
     service_response_times: List[ServiceResponseTime] = Field(default_factory=list)
     tls_sessions: List[TlsSession] = Field(default_factory=list)
+    expert_info: List[ExpertEntry] = Field(default_factory=list)
+    resolved_names: List[ResolvedName] = Field(default_factory=list)
     meta: Meta

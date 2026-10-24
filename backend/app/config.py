@@ -102,8 +102,20 @@ MAX_ICMP_EVENTS = _int_env("MAX_ICMP_EVENTS", 5000)
 MAX_DHCP_TRANSACTIONS = _int_env("MAX_DHCP_TRANSACTIONS", 10000)
 MAX_ISSUES = _int_env("MAX_ISSUES", 5000)
 TCP_ZERO_WINDOW_MIN_EVENTS = _int_env("TCP_ZERO_WINDOW_MIN_EVENTS", 3)
+# TCP analysis flags (Wireshark "SEQ/ACK analysis"). Counts are per conversation.
+TCP_DUP_ACK_MIN = _int_env("TCP_DUP_ACK_MIN", 5)             # duplicate ACKs -> loss/reorder
+TCP_OUT_OF_ORDER_MIN = _int_env("TCP_OUT_OF_ORDER_MIN", 5)   # reordered segments
+TCP_LOST_SEGMENT_MIN = _int_env("TCP_LOST_SEGMENT_MIN", 1)   # "previous segment not captured"
+TCP_WINDOW_FULL_MIN = _int_env("TCP_WINDOW_FULL_MIN", 3)     # sender filled the receive window
+TCP_RESET_MIN_CONVS = _int_env("TCP_RESET_MIN_CONVS", 3)     # conversations reset after being established
+# ICMP errors: a single unreachable is already a signal; TTL exceeded needs a pattern.
+ICMP_UNREACHABLE_MIN = _int_env("ICMP_UNREACHABLE_MIN", 1)
+ICMP_TTL_EXCEEDED_MIN = _int_env("ICMP_TTL_EXCEEDED_MIN", 5)
 MAX_ARP_CLAIMS = _int_env("MAX_ARP_CLAIMS", 20000)
 MAX_ARP_MACS_PER_IP = _int_env("MAX_ARP_MACS_PER_IP", 32)
+MAX_EXPERT_ENTRIES = _int_env("MAX_EXPERT_ENTRIES", 500)       # per severity band (see engine)
+MAX_ICMP_ERROR_GROUPS = _int_env("MAX_ICMP_ERROR_GROUPS", 500)
+MAX_RESOLVED_NAMES = _int_env("MAX_RESOLVED_NAMES", 5000)
 
 # Packet list returned to the UI (Wireshark-style view), capped for size.
 PACKET_LIST_MAX = _int_env("PACKET_LIST_MAX", 1000)

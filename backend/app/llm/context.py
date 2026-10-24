@@ -15,6 +15,8 @@ MAX_UDP_CONVERSATIONS = 6
 MAX_TALKERS = 6
 MAX_PROTOCOLS = 10
 MAX_TUNNELS = 12
+MAX_EXPERT = 10
+EXPERT_TEXT_MAX = 120
 
 
 def build_llm_context(analysis: AnalysisResult) -> Dict[str, Any]:
@@ -53,6 +55,12 @@ def build_llm_context(analysis: AnalysisResult) -> Dict[str, Any]:
                 "mss_client": c.mss_client,
                 "mss_server": c.mss_server,
                 "handshake_rtt_ms": c.handshake_rtt_ms,
+                "dup_acks": c.dup_acks,
+                "out_of_order": c.out_of_order,
+                "lost_segments": c.lost_segments,
+                "window_full": c.window_full,
+                "resets_midstream": c.resets_midstream,
+                "rtt_avg_ms": c.rtt_avg_ms,
             }
             for c in analysis.conversations.tcp[:MAX_TCP_CONVERSATIONS]
         ],
@@ -81,4 +89,15 @@ def build_llm_context(analysis: AnalysisResult) -> Dict[str, Any]:
             for i in analysis.issues[:MAX_ISSUES]
         ],
         "issues_truncated": max(0, len(analysis.issues) - MAX_ISSUES),
+        # Wireshark's own errors and warnings (already sorted, worst first).
+        # Notes/chat are noise for a diagnosis and stay out of the summary.
+        "expert_info": [
+            {
+                "severity": e.severity,
+                "group": e.group,
+                "summary": e.summary[:EXPERT_TEXT_MAX],
+                "count": e.count,
+            }
+            for e in [e for e in analysis.expert_info if e.severity in ("error", "warning")][:MAX_EXPERT]
+        ],
     }

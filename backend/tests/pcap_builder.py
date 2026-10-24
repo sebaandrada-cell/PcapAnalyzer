@@ -138,6 +138,21 @@ def icmp_frag_needed(src: str, dst: str, mtu: int,
     return ipv4(src, dst, 1, icmp)
 
 
+def icmp_error(src: str, dst: str, icmp_type: int, code: int,
+               orig_src: str, orig_dst: str, orig_proto: int = 17) -> bytes:
+    """Generic ICMP error (dest unreachable, time exceeded...) quoting the
+    first 28 bytes of the offending datagram, as routers and hosts do."""
+    if orig_proto == 17:
+        inner = struct.pack("!HHHH", 40000, 9999, 20, 0)
+    else:
+        inner = struct.pack("!HHII", 40000, 80, 1, 0)
+    orig = ipv4(orig_src, orig_dst, orig_proto, inner)
+    icmp = struct.pack("!BBHI", icmp_type, code, 0, 0) + orig[:28]
+    csum = _checksum(icmp)
+    icmp = icmp[:2] + struct.pack("!H", csum) + icmp[4:]
+    return ipv4(src, dst, 1, icmp)
+
+
 def esp(src: str, dst: str, spi: int, seq: int) -> bytes:
     return ipv4(src, dst, 50, struct.pack("!II", spi, seq) + b"\xaa" * 40)
 
@@ -344,6 +359,103 @@ def build_dhcp_packets():
     # mac3 DISCOVERs twice and nobody answers
     pkts.append((2.000, c2s(c_udp(dhcp(1, 0x3003, mac3, hostname="camera")), mac3)))
     pkts.append((4.000, c2s(c_udp(dhcp(1, 0x3003, mac3, hostname="camera")), mac3)))
+    return pkts
+
+
+def build_troubleshooting_packets():
+    """Separate capture (keeps the main sample's counts untouched) with the
+    TCP-analysis and ICMP-error patterns Wireshark flags:
+
+      * stream 0 (:5001): a lost segment followed by 5 duplicate ACKs and a
+        fast retransmission
+      * stream 1 (:5002): 6 pairs of reordered segments (1 out-of-order,
+        5 reported by Wireshark as lost-segment + retransmission)
+      * stream 2 (:5003): sender fills the 300-byte receive window 4 times
+      * stream 3 (:5004): established connection that ends with a RST
+      * ICMP errors: port unreachable, host unreachable, admin-prohibited x2,
+        TTL exceeded x6
+      * one DNS answer so the capture also teaches name resolution
+    """
+    c, srv, rtr, fw = "10.1.0.1", "10.1.0.2", "10.1.0.254", "10.1.0.253"
+    pkts = []
+
+    def a2b(payload: bytes) -> bytes:
+        return MAC_B + MAC_A + b"\x08\x00" + payload
+
+    def b2a(payload: bytes) -> bytes:
+        return MAC_A + MAC_B + b"\x08\x00" + payload
+
+    def handshake(t, sport, dport, isn_a, isn_b, win_b=65535):
+        pkts.append((t, a2b(tcp(c, srv, sport, dport, isn_a, 0, SYN))))
+        pkts.append((t + 0.010, b2a(tcp(srv, c, dport, sport, isn_b, isn_a + 1, SYN | ACK, window=win_b))))
+        pkts.append((t + 0.020, a2b(tcp(c, srv, sport, dport, isn_a + 1, isn_b + 1, ACK))))
+
+    seg = b"x" * 100
+
+    # --- stream 0: lost segment, 5 duplicate ACKs, fast retransmission ------
+    sp, dp, ia, ib = 40001, 5001, 1000, 9000
+    handshake(0.000, sp, dp, ia, ib)
+    pkts.append((0.030, a2b(tcp(c, srv, sp, dp, ia + 1, ib + 1, PSH | ACK, payload=seg))))
+    pkts.append((0.040, b2a(tcp(srv, c, dp, sp, ib + 1, ia + 101, ACK))))
+    for k in range(5):  # segments 3..7 arrive, segment 2 (seq ia+101) is missing
+        t = 0.050 + k * 0.010
+        pkts.append((t, a2b(tcp(c, srv, sp, dp, ia + 201 + k * 100, ib + 1, PSH | ACK, payload=seg))))
+        pkts.append((t + 0.005, b2a(tcp(srv, c, dp, sp, ib + 1, ia + 101, ACK))))
+    pkts.append((0.100, a2b(tcp(c, srv, sp, dp, ia + 101, ib + 1, PSH | ACK, payload=seg))))
+    pkts.append((0.110, b2a(tcp(srv, c, dp, sp, ib + 1, ia + 701, ACK))))
+
+    # --- stream 1: reordered segments ---------------------------------------
+    # Wireshark only labels a late segment "out-of-order" (instead of a plain
+    # retransmission) when it follows the jump within a tight window and the
+    # round-trip time is not yet established: pair 0 is sent before the
+    # handshake ACK on purpose, which yields exactly one such flag. The other
+    # five pairs are reported as lost-segment + retransmission.
+    sp, dp, ia, ib = 40002, 5002, 2000, 8000
+    pkts.append((1.000, a2b(tcp(c, srv, sp, dp, ia, 0, SYN))))
+    pkts.append((1.100, b2a(tcp(srv, c, dp, sp, ib, ia + 1, SYN | ACK))))
+    pkts.append((1.1005, a2b(tcp(c, srv, sp, dp, ia + 101, ib + 1, PSH | ACK, payload=seg))))
+    pkts.append((1.1015, a2b(tcp(c, srv, sp, dp, ia + 1, ib + 1, PSH | ACK, payload=seg))))
+    pkts.append((1.200, a2b(tcp(c, srv, sp, dp, ia + 201, ib + 1, ACK))))
+    pkts.append((1.250, b2a(tcp(srv, c, dp, sp, ib + 1, ia + 201, ACK))))
+    for k in range(1, 6):
+        t = 1.300 + k * 0.050
+        base = ia + 1 + k * 200
+        pkts.append((t, a2b(tcp(c, srv, sp, dp, base + 100, ib + 1, PSH | ACK, payload=seg))))
+        pkts.append((t + 0.001, a2b(tcp(c, srv, sp, dp, base, ib + 1, PSH | ACK, payload=seg))))
+        pkts.append((t + 0.003, b2a(tcp(srv, c, dp, sp, ib + 1, base + 200, ACK))))
+
+    # --- stream 2: sender fills a 300-byte receive window four times --------
+    sp, dp, ia, ib = 40003, 5003, 3000, 7000
+    handshake(2.000, sp, dp, ia, ib, win_b=300)
+    seq = ia + 1
+    for k in range(4):
+        t = 2.050 + k * 0.100
+        for j in range(3):
+            pkts.append((t + j * 0.001, a2b(tcp(c, srv, sp, dp, seq + j * 100, ib + 1, PSH | ACK, payload=seg))))
+        pkts.append((t + 0.050, b2a(tcp(srv, c, dp, sp, ib + 1, seq + 300, ACK, window=300))))
+        seq += 300
+
+    # --- stream 3: established, then RST -----------------------------------
+    sp, dp, ia, ib = 40004, 5004, 4000, 6000
+    handshake(3.000, sp, dp, ia, ib)
+    pkts.append((3.030, a2b(tcp(c, srv, sp, dp, ia + 1, ib + 1, PSH | ACK, payload=seg))))
+    pkts.append((3.040, b2a(tcp(srv, c, dp, sp, ib + 1, ia + 101, PSH | ACK, payload=seg))))
+    pkts.append((3.050, a2b(tcp(c, srv, sp, dp, ia + 101, ib + 101, ACK))))
+    pkts.append((3.060, b2a(tcp(srv, c, dp, sp, ib + 101, ia + 101, RST | ACK))))
+
+    # --- ICMP errors --------------------------------------------------------
+    pkts.append((4.000, b2a(icmp_error(srv, c, 3, 3, c, srv))))                # port unreachable
+    pkts.append((4.100, b2a(icmp_error(rtr, c, 3, 1, c, "10.1.0.77"))))        # host unreachable
+    for k in range(2):
+        pkts.append((4.200 + k * 0.1, b2a(icmp_error(fw, c, 3, 13, c, "10.1.0.88", 6))))  # admin prohibited
+    for k in range(6):
+        pkts.append((4.500 + k * 0.1, b2a(icmp_error(rtr, c, 11, 0, c, "10.1.0.99"))))    # TTL exceeded
+
+    # --- one DNS answer (name resolution) -----------------------------------
+    pkts.append((5.000, a2b(udp(c, "10.1.0.53", 53001, 53, dns_query(0x7001, "intranet.example.com")))))
+    pkts.append((5.020, b2a(udp("10.1.0.53", c, 53, 53001, dns_response(0x7001, "intranet.example.com", srv)))))
+
+    pkts.sort(key=lambda item: item[0])
     return pkts
 
 

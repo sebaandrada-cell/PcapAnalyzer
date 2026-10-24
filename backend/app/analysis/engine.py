@@ -7,6 +7,7 @@ the raw material for issue detection. Detection rules themselves live in
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -19,12 +20,14 @@ from ..models import (
     Conversations,
     DhcpLeaseRow,
     DnsQueryRow,
+    ExpertEntry,
     FileInfo,
     HttpRequestRow,
     Meta,
     PacketList,
     PacketRow,
     ProtocolStat,
+    ResolvedName,
     ServiceResponseTime,
     Summary,
     TcpConversation,
@@ -66,6 +69,15 @@ class ConvState:
     mss_client: Optional[int] = None
     mss_server: Optional[int] = None
     full_size_retrans: int = 0  # retransmissions of MSS-sized segments (PMTUD)
+    # Wireshark "SEQ/ACK analysis" counters
+    dup_acks: int = 0
+    out_of_order: int = 0
+    lost_segments: int = 0
+    window_full: int = 0
+    resets_midstream: int = 0  # RST after the handshake had completed
+    rtt_sum: float = 0.0  # tcp.analysis.ack_rtt samples (seconds)
+    rtt_samples: int = 0
+    rtt_max: float = 0.0
 
 
 @dataclass
@@ -111,6 +123,31 @@ class IcmpFragEvent:
     src: str  # router reporting the bottleneck
     dst: str  # sender of the too-big packet
     mtu: int
+
+
+@dataclass
+class IcmpErrorGroup:
+    """ICMP/ICMPv6 error messages from one reporter, grouped by type and code."""
+
+    family: int  # 4 or 6
+    reporter: str
+    icmp_type: int
+    code: int
+    count: int = 0
+    first_ts: float = 0.0
+    targets: List[str] = field(default_factory=list)  # destinations that failed
+    victims: List[str] = field(default_factory=list)  # hosts that got the error
+
+
+@dataclass
+class ExpertAgg:
+    """Wireshark "Expert Information" line: same severity/group/text, counted."""
+
+    severity: str
+    group: str
+    summary: str
+    count: int = 0
+    first_packet: int = 0
 
 
 @dataclass
@@ -227,6 +264,13 @@ class CaptureState:
     tls_sessions: Dict[int, TlsSessionState] = field(default_factory=dict)
     # DHCP transactions keyed by BOOTP xid (+ client MAC)
     dhcp_txns: Dict[Tuple[str, str], DhcpTxnState] = field(default_factory=dict)
+    # ICMP errors (unreachable, TTL exceeded) grouped by reporter/type/code
+    icmp_errors: Dict[Tuple[int, str, int, int], IcmpErrorGroup] = field(default_factory=dict)
+    # Wireshark expert info, aggregated; entries kept per severity band
+    expert: Dict[Tuple[str, str, str], ExpertAgg] = field(default_factory=dict)
+    expert_band_sizes: Dict[str, int] = field(default_factory=dict)
+    # IP -> name learned from DNS answers (Wireshark "Resolved Addresses")
+    resolved: Dict[str, str] = field(default_factory=dict)
     truncated_sections: set = field(default_factory=set)
     dns_queries_seen: int = 0
 
@@ -274,6 +318,122 @@ def _update_conversation(
     return conv
 
 
+# Wireshark TCP-analysis flags surfaced per packet: (tshark field, short name).
+_ANALYSIS_FLAGS = [
+    ("tcp.analysis.retransmission", "retransmission"),
+    ("tcp.analysis.fast_retransmission", "fast_retransmission"),
+    ("tcp.analysis.spurious_retransmission", "spurious_retransmission"),
+    ("tcp.analysis.duplicate_ack", "dup_ack"),
+    ("tcp.analysis.out_of_order", "out_of_order"),
+    ("tcp.analysis.lost_segment", "lost_segment"),
+    ("tcp.analysis.window_full", "window_full"),
+    ("tcp.analysis.zero_window", "zero_window"),
+    ("tcp.analysis.zero_window_probe", "zero_window_probe"),
+    ("tcp.analysis.window_update", "window_update"),
+    ("tcp.analysis.keep_alive", "keep_alive"),
+]
+_TCP_FLAG_NAMES = [
+    ("tcp.flags.syn", "SYN"),
+    ("tcp.flags.fin", "FIN"),
+    ("tcp.flags.reset", "RST"),
+    ("tcp.flags.push", "PSH"),
+    ("tcp.flags.ack", "ACK"),
+]
+# _ws.expert.severity / _ws.expert.group values (tshark -G values)
+_EXPERT_SEVERITY = {1048576: "chat", 2097152: "chat", 4194304: "note",
+                    6291456: "warning", 8388608: "error"}
+_EXPERT_RANK = {"chat": 0, "note": 1, "warning": 2, "error": 3}
+_EXPERT_GROUPS = {
+    16777216: "Checksum", 33554432: "Sequence", 50331648: "Response",
+    67108864: "Request", 83886080: "Undecoded", 100663296: "Reassemble",
+    117440512: "Malformed", 134217728: "Debug", 150994944: "Protocol",
+    167772160: "Security", 184549376: "Comment", 201326592: "Decryption",
+    218103808: "Assumption", 234881024: "Deprecated", 251658240: "Receive",
+    268435456: "Interface", 285212672: "Dissector bug",
+}
+
+
+_EXPERT_COUNTER = re.compile(r"\(#\d+\)")
+
+
+def _opt_int(value: Optional[str]) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
+def _as_list(value) -> list:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _expert_messages(layers: dict) -> List[Tuple[str, str, str]]:
+    """(severity, group, text) for every expert-info entry on this packet."""
+    messages = _as_list(layers.get("_ws_expert_message"))
+    if not messages:
+        return []
+    severities = _as_list(layers.get("_ws_expert_severity"))
+    groups = _as_list(layers.get("_ws_expert_group"))
+    out = []
+    for index, text in enumerate(messages):
+        sev = _EXPERT_SEVERITY.get(_opt_int(severities[index]) if index < len(severities) else None, "chat")
+        grp = _EXPERT_GROUPS.get(_opt_int(groups[index]) if index < len(groups) else None, "Other")
+        # "Duplicate ACK (#1)", "(#2)"... would split one finding into many lines.
+        out.append((sev, grp, _EXPERT_COUNTER.sub("(#n)", _sanitize(str(text), 200))))
+    return out
+
+
+def _record_expert(state: "CaptureState", number: int, messages) -> None:
+    for severity, group, text in messages:
+        key = (severity, group, text)
+        entry = state.expert.get(key)
+        if entry is None:
+            # Errors/warnings and chat/notes have separate budgets so a flood of
+            # per-port "connection established" lines cannot hide a real error.
+            band = "high" if severity in ("error", "warning") else "low"
+            if state.expert_band_sizes.get(band, 0) >= config.MAX_EXPERT_ENTRIES:
+                state.truncated_sections.add("expert_info")
+                continue
+            state.expert_band_sizes[band] = state.expert_band_sizes.get(band, 0) + 1
+            entry = state.expert[key] = ExpertAgg(severity, group, text, 0, number)
+        entry.count += 1
+
+
+def _packet_extras(layers: dict, chain: List[str], expert_messages) -> dict:
+    """Optional PacketRow fields (ports, TCP flags/seq/ack/window, flags...)."""
+    extras: dict = {}
+    quoted = "icmp" in chain or "icmpv6" in chain  # inner packet belongs to the error
+    ttl = _opt_int(fget(layers, "ip.ttl"))
+    if ttl is not None:
+        extras["ttl"] = ttl
+    if not quoted:
+        if fget(layers, "tcp.srcport") is not None:
+            extras["sport"] = _opt_int(fget(layers, "tcp.srcport"))
+            extras["dport"] = _opt_int(fget(layers, "tcp.dstport"))
+            extras["tcp_flags"] = [name for fld, name in _TCP_FLAG_NAMES if field_bool(layers, fld)]
+            extras["seq"] = _opt_int(fget(layers, "tcp.seq"))
+            extras["ack"] = _opt_int(fget(layers, "tcp.ack"))
+            extras["win"] = _opt_int(fget(layers, "tcp.window_size"))
+            extras["payload"] = _opt_int(fget(layers, "tcp.len"))
+            extras["analysis"] = [name for fld, name in _ANALYSIS_FLAGS if field_present(layers, fld)]
+            rtt = fget(layers, "tcp.analysis.ack_rtt")
+            if rtt is not None:
+                try:
+                    extras["rtt_ms"] = round(float(rtt) * 1000, 3)
+                except ValueError:
+                    pass
+        elif fget(layers, "udp.srcport") is not None:
+            extras["sport"] = _opt_int(fget(layers, "udp.srcport"))
+            extras["dport"] = _opt_int(fget(layers, "udp.dstport"))
+    if expert_messages:
+        severity, _group, text = max(expert_messages, key=lambda m: _EXPERT_RANK[m[0]])
+        extras["expert"] = severity
+        extras["expert_message"] = text[:120]
+    return extras
+
+
 def _consume_packet(state: CaptureState, layers: dict) -> None:
     ts = float(fget(layers, "frame.time_epoch", "0") or 0)
     length = int(fget(layers, "frame.len", "0") or 0)
@@ -291,6 +451,10 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
 
     src = fget(layers, "ip.src") or fget(layers, "ipv6.src")
     dst = fget(layers, "ip.dst") or fget(layers, "ipv6.dst")
+
+    expert_messages = _expert_messages(layers)
+    if expert_messages:
+        _record_expert(state, int(fget(layers, "frame.number", "0") or 0), expert_messages)
 
     if len(state.packet_rows) < config.PACKET_LIST_MAX:
         # tcp.stream tags the row so the flow graph can filter one conversation
@@ -310,6 +474,7 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             length=length,
             info=_sanitize(fget(layers, "_ws.col.info", "") or "", 200),
             stream=pkt_stream,
+            **_packet_extras(layers, chain, expert_messages),
         ))
 
     if src and dst:
@@ -387,6 +552,28 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
                 conv.full_size_retrans += 1
         if field_present(layers, "tcp.analysis.zero_window"):
             conv.zero_window_events += 1
+        if field_present(layers, "tcp.analysis.duplicate_ack"):
+            conv.dup_acks += 1
+        if field_present(layers, "tcp.analysis.out_of_order"):
+            conv.out_of_order += 1
+        if field_present(layers, "tcp.analysis.lost_segment"):
+            conv.lost_segments += 1
+        if field_present(layers, "tcp.analysis.window_full"):
+            conv.window_full += 1
+        # RST after the handshake completed (SYN->RST without SYN-ACK is the
+        # separate firewall/closed-port pattern, so it is not counted here).
+        if field_bool(layers, "tcp.flags.reset") and conv.synack_seen:
+            conv.resets_midstream = 1
+        ack_rtt = fget(layers, "tcp.analysis.ack_rtt")
+        if ack_rtt is not None:
+            try:
+                rtt_value = float(ack_rtt)
+            except ValueError:
+                rtt_value = None
+            if rtt_value is not None and rtt_value >= 0:
+                conv.rtt_sum += rtt_value
+                conv.rtt_samples += 1
+                conv.rtt_max = max(conv.rtt_max, rtt_value)
 
     if udp_stream is not None and src and dst:
         stream_key = int(udp_stream)
@@ -467,6 +654,15 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             if pending == []:
                 del state.dns_pending[key]
             rcode = int(fget(layers, "dns.flags.rcode", "0") or 0)
+            if rcode == 0 and name:
+                for addr in _as_list(layers.get("dns_a")) + _as_list(layers.get("dns_aaaa")):
+                    address = _sanitize(str(addr), 45)
+                    if address in state.resolved:
+                        continue
+                    if len(state.resolved) >= config.MAX_RESOLVED_NAMES:
+                        state.truncated_sections.add("resolved_names")
+                        break
+                    state.resolved[address] = name
             if query is not None:
                 if len(state.dns_answered) < config.MAX_DNS_TRANSACTIONS:
                     state.dns_answered.append(
@@ -553,6 +749,41 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
                 ts=ts, src=src, dst=dst,
                 mtu=int(fget(layers, "icmpv6.mtu", "0") or 0),
             )) if len(state.icmp_frag_events) < config.MAX_ICMP_EVENTS else state.truncated_sections.add("icmp")
+
+    # ICMP / ICMPv6 errors that point at a routing, firewall or host problem.
+    # "Fragmentation needed" is handled above (path MTU), not here.
+    if src and dst:
+        error_key = None
+        inner_dsts: list = []
+        icmp4_type, icmp6_type = fget(layers, "icmp.type"), fget(layers, "icmpv6.type")
+        if icmp4_type is not None:
+            kind, code = _opt_int(icmp4_type), _opt_int(fget(layers, "icmp.code", "0")) or 0
+            if kind is not None and ((kind == 3 and code != 4) or kind == 11):
+                error_key = (4, src, kind, code)
+                inner_dsts = _as_list(layers.get("ip_dst"))
+        elif icmp6_type is not None:
+            kind, code = _opt_int(icmp6_type), _opt_int(fget(layers, "icmpv6.code", "0")) or 0
+            if kind in (1, 3):  # destination unreachable, time exceeded
+                error_key = (6, src, kind, code)
+                inner_dsts = _as_list(layers.get("ipv6_dst"))
+        if error_key is not None:
+            group = state.icmp_errors.get(error_key)
+            if group is None:
+                if len(state.icmp_errors) < config.MAX_ICMP_ERROR_GROUPS:
+                    group = state.icmp_errors[error_key] = IcmpErrorGroup(
+                        family=error_key[0], reporter=src,
+                        icmp_type=error_key[2], code=error_key[3], first_ts=ts,
+                    )
+                else:
+                    state.truncated_sections.add("icmp")
+            if group is not None:
+                group.count += 1
+                # the quoted (inner) header's destination is what was unreachable
+                target = _sanitize(str(inner_dsts[1]), 45) if len(inner_dsts) > 1 else None
+                if target and target not in group.targets and len(group.targets) < 5:
+                    group.targets.append(target)
+                if dst not in group.victims and len(group.victims) < 3:
+                    group.victims.append(dst)
 
     # IPv4 fragments (MF set, or a trailing fragment with offset > 0)
     frag_offset = int(fget(layers, "ip.frag_offset", "0") or 0)
@@ -670,6 +901,14 @@ def _build_conversations(state: CaptureState) -> Conversations:
                 retransmissions=conv.retransmissions,
                 retransmission_pct=round(pct, 2),
                 zero_window_events=conv.zero_window_events,
+                dup_acks=conv.dup_acks,
+                out_of_order=conv.out_of_order,
+                lost_segments=conv.lost_segments,
+                window_full=conv.window_full,
+                resets_midstream=conv.resets_midstream,
+                rtt_avg_ms=(round(conv.rtt_sum / conv.rtt_samples * 1000, 2)
+                            if conv.rtt_samples else None),
+                rtt_max_ms=round(conv.rtt_max * 1000, 2) if conv.rtt_samples else None,
             )
         )
     tcp.sort(key=lambda item: item.bytes, reverse=True)
@@ -792,6 +1031,24 @@ def _build_tls_sessions(state: CaptureState) -> List[TlsSession]:
     return sessions
 
 
+def _build_expert_info(state: CaptureState) -> List[ExpertEntry]:
+    """Wireshark "Expert Information": errors first, then by how often it fired."""
+    entries = [
+        ExpertEntry(severity=e.severity, group=e.group, summary=e.summary,
+                    count=e.count, first_packet=e.first_packet)
+        for e in state.expert.values()
+    ]
+    entries.sort(key=lambda e: (-_EXPERT_RANK[e.severity], -e.count, e.summary))
+    return entries
+
+
+def _build_resolved_names(state: CaptureState) -> List[ResolvedName]:
+    return [
+        ResolvedName(address=address, name=name)
+        for address, name in sorted(state.resolved.items())
+    ]
+
+
 def _build_tunnels(state: CaptureState) -> List[Tunnel]:
     tunnels = [
         Tunnel(
@@ -843,6 +1100,8 @@ def analyze_pcap(
         http_requests=state.http_requests,
         service_response_times=_build_service_response_times(state),
         tls_sessions=_build_tls_sessions(state),
+        expert_info=_build_expert_info(state),
+        resolved_names=_build_resolved_names(state),
         meta=Meta(
             engine_version=__version__,
             tshark_version=tshark_version(tshark_path),

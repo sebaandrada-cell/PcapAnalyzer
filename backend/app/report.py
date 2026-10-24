@@ -36,6 +36,7 @@ _MUTED = colors.HexColor("#52514e")
 _GRID = colors.HexColor("#e1e0d9")
 _HEADER_BG = colors.HexColor("#f0efec")
 
+MAX_REPORT_EXPERT = 15
 MAX_REPORT_CONVERSATIONS = 15
 
 
@@ -186,15 +187,31 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
 
     if analysis.conversations.tcp:
         flow.append(Paragraph("Conversaciones TCP principales", styles["h2"]))
-        rows = [["Origen", "Destino", "Paquetes", "Bytes", "Retrans."]]
+        rows = [["Origen", "Destino", "Paquetes", "Bytes", "Retrans.", "ACK dup.", "RTT med."]]
         for conv in analysis.conversations.tcp[:MAX_REPORT_CONVERSATIONS]:
             rows.append([
                 Paragraph(_esc("%s:%d" % (conv.src, conv.src_port)), styles["cell"]),
                 Paragraph(_esc("%s:%d" % (conv.dst, conv.dst_port)), styles["cell"]),
                 str(conv.packets), _fmt_bytes(conv.bytes),
                 "%d (%.1f%%)" % (conv.retransmissions, conv.retransmission_pct),
+                str(conv.dup_acks),
+                "%.1f ms" % conv.rtt_avg_ms if conv.rtt_avg_ms is not None else "—",
             ])
-        flow.append(_table(rows, col_widths=[42 * mm, 42 * mm, 22 * mm, 28 * mm, 30 * mm]))
+        flow.append(_table(
+            rows, col_widths=[36 * mm, 36 * mm, 18 * mm, 22 * mm, 26 * mm, 16 * mm, 20 * mm]))
+
+    expert = [e for e in analysis.expert_info if e.severity in ("error", "warning")]
+    if expert:
+        flow.append(Paragraph("Información experta de Wireshark (errores y avisos)", styles["h2"]))
+        flow.append(_table(
+            [["Severidad", "Grupo", "Mensaje", "Veces"]]
+            + [
+                [e.severity.upper(), _esc(e.group),
+                 Paragraph(_esc(e.summary), styles["cell"]), str(e.count)]
+                for e in expert[:MAX_REPORT_EXPERT]
+            ],
+            col_widths=[24 * mm, 26 * mm, 100 * mm, 16 * mm],
+        ))
 
     if analysis.tunnels:
         flow.append(Paragraph("Túneles VPN detectados", styles["h2"]))
