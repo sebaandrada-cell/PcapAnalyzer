@@ -13,13 +13,15 @@ quiere perder media hora leyendo paquetes.
 | | |
 |---|---|
 | Paquete 1.1.0 en Gumroad, sin secretos ni datos internos | ✔ (`scripts/build-release.sh`) |
+| Paquete 1.1.1 construido (arregla el inglés del modo demo), **sin subir a Gumroad** | ☐ pendiente de OK del dueño |
 | `docker compose` probado de punta a punta (19 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
 | Landing bilingüe con el comando correcto (`./start.sh`) | ✔ versión 7 |
 | Ficha de Gumroad alineada con el producto | ✔ |
+| **Demo sin pagar ni registrarse** (https://pcap-analyzer-seven.vercel.app/#demo) | ✔ en producción, sin llamadas al backend |
+| 5 capturas del producto real (`marketing/`) | ✔ |
+| Vídeo/GIF de 20–30 s | ☐ lo graba el dueño con Kap (guion en §5) |
 | Huella de la descarga real = paquete local | ☐ la comprueba el dueño (`shasum -a 256`) |
 | **Compra de prueba completa** (pago → email → descarga → arranque) | ☐ sin hacer |
-| Material visual (capturas + GIF/MP4 de 20–30 s) | ☐ sin hacer |
-| Forma de probarlo **sin pagar ni registrarse** | ☐ no existe (ver §2) |
 | Reglas de cada comunidad leídas | ☐ sin hacer |
 
 **La compra de prueba es lo más importante antes de anunciar nada.** Crea un cupón de
@@ -33,7 +35,7 @@ del primer cliente real, no se recupera.
   probar «ideally without barriers such as signups», dejan fuera las páginas de
   aterrizaje («Don't post landing pages») y prohíben pedir votos o comentarios a amigos.
   Un producto de pago con landing se arriesga a que lo marquen como fuera de tema. Solo
-  tiene sentido si existe una prueba gratuita sin registro (§3, opción A).
+  tiene sentido enlazando a la demo sin registro (§3), no a la landing ni a Gumroad.
 - **Reddit: las reglas NO están verificadas.** Reddit bloquea la lectura automática, así
   que el plan anterior se equivocó al dar por hecho que r/sysadmin tiene un día de
   autopromoción. **Lee la barra lateral y las reglas de cada subreddit antes de publicar**
@@ -43,29 +45,31 @@ del primer cliente real, no se recupera.
   `docker compose up` sino `./start.sh`. Los textos de §6 están corregidos.
 - Pedir a conocidos que comenten sirve en LinkedIn, **no** en Hacker News.
 
-## 3. Decisión pendiente: cómo dejar probar el producto sin pagar
+## 3. Cómo se prueba sin pagar: demo web sin registro (hecha)
 
-Es lo que más cambia las posibilidades de cada canal.
+**https://pcap-analyzer-seven.vercel.app/#demo** — el panel real con el análisis de la
+captura de ejemplo, sin cuenta y sin backend (son datos generados por el propio motor,
+`scripts/make-demo-data.py`). Lo que **sí** puede hacer el visitante: recorrer métricas,
+tablas, lista de problemas, abrir una conversación con su diagrama de flujo, cambiar
+idioma y tema, y pulsar «Generar diagnóstico». Lo que **no**: subir capturas propias, la
+consulta en lenguaje natural y el informe PDF (eso es la versión completa).
 
-- **A. Demo web sin registro** (recomendada): una página pública que muestra el análisis
-  de la captura de ejemplo, sin backend ni login. Habilita Show HN, da algo que enlazar
-  en Reddit y baja la barrera de compra. Requiere un pequeño cambio en el frontend.
-- **B. Solo vídeo/GIF + capturas.** Más barato, pero el visitante no toca nada. Sirve
-  para LinkedIn y Gumroad, no para Show HN.
-- **C. Publicar la captura de ejemplo** (`sample.pcap`) como descarga libre en un artículo
-  técnico, para que el lector la abra en Wireshark y compare con lo que detecta la
-  herramienta.
+Dilo claro al enlazarla: el diagnóstico de la demo es **texto generado sin IA** (así lo
+indica la propia página). No la presentes como IA real.
+
+Opcional: publicar `sample.pcap` como descarga libre dentro de un artículo técnico, para
+que el lector la abra en Wireshark y compare con lo que detecta la herramienta.
 
 ## 4. Calendario (hoy es sábado 24)
 
 | Cuándo | Qué |
 |---|---|
-| **Sáb 24 – lun 26** | Preparación: compra de prueba, huella de la descarga, capturas y GIF, leer reglas de cada canal. Si se elige A, construir la demo. |
+| **Sáb 24 – lun 26** | Preparación: compra de prueba, huella de la descarga, grabar el vídeo con Kap, leer reglas de cada canal, decidir si se sube el 1.1.1. (La demo y las capturas ya están.) |
 | **Mar 27** · 8:30–10:00 | **LinkedIn** (post en español + vídeo). Responder cada comentario el mismo día. |
 | **Mié 28** | **Indie Hackers** (post en inglés sobre cómo se construyó y qué problema resuelve). |
 | **Jue 29** | **Reddit**: un único subreddit, el que sus reglas permitan; participa en comentarios, no solo publiques. |
 | **Lun 2 nov** | Revisar métricas (§7) y decidir qué ajustar. |
-| **Mar 3 nov** · ~15:00 UTC | **Show HN**, solo si ya existe la prueba sin registro (§3-A). Estar 3 horas disponible para responder. |
+| **Mar 3 nov** · ~15:00 UTC | **Show HN** enlazando a la **demo** (§3), no a la landing ni a Gumroad. Estar 3 horas disponible para responder. |
 
 Mejor un canal bien trabajado cada día que cinco a la vez con prisas.
 **Product Hunt** es una opción de segunda ola: está pensado para lanzamientos de producto
@@ -113,6 +117,9 @@ envía un resumen en JSON, nunca el pcap.
 Pago único de 5 €, self-hosted, sin suscripción.
 https://sebaandrada6.gumroad.com/l/hspgx
 
+Puedes verla funcionando sin registrarte (con una captura de ejemplo):
+https://pcap-analyzer-seven.vercel.app/#demo
+
 Si haces troubleshooting de redes, me interesa saber qué echas en falta.
 ```
 
@@ -138,12 +145,14 @@ discarded; only if you enable the real AI is a JSON summary (never the raw pcap)
 to the model.
 
 One-time €5, personal license, self-hosted: https://sebaandrada6.gumroad.com/l/hspgx
+You can see it working with a sample capture, no sign-up: https://pcap-analyzer-seven.vercel.app/#demo
+(the demo's diagnosis text is generated without AI, and says so)
 
 Happy to discuss the detection engine, how it parses captures (tshark, streaming), or
 what you would add.
 ```
 
-### Show HN (solo si existe prueba sin registro, §3-A)
+### Show HN (enlazando a la demo, §3)
 
 Título: `Show HN: PcapAnalyzer – self-hosted pcap analyzer with a first-pass diagnosis`
 (sin «€5» en el título; el precio va en el primer comentario, no en el titular).
