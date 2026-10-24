@@ -74,8 +74,40 @@ scan() { # $1=label  $2=ERE
   [ -z "$hits" ] || bad "$1 en: $(echo "$hits" | tr '\n' ' ')"
 }
 scan "clave de Anthropic (sk-ant-)"            'sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{16,}'
-scan "JWT de Supabase con role=service_role"    'InJvbGUiOiJzZXJ2aWNlX3JvbGUi'
 scan "URL de Postgres con contraseña"           'postgres(ql)?://[^:@/[:space:]<>]+:[^@[:space:]<>[]{4,}@'
+
+# Supabase service_role keys are JWTs. A fixed base64 fragment is NOT reliable
+# (the encoding of `"role":"service_role"` changes with its offset in the
+# payload), so decode every JWT-looking string and check its `role` claim.
+command -v python3 >/dev/null 2>&1 || die "Se necesita python3 para verificar los JWT del paquete."
+jwt_hits="$(python3 - "$ROOT" <<'PY'
+import base64, json, os, re, sys
+
+root = sys.argv[1]
+jwt = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{8,}")
+found = set()
+for base, _dirs, files in os.walk(root):
+    for name in files:
+        path = os.path.join(base, name)
+        try:
+            data = open(path, "rb").read()
+        except OSError:
+            continue
+        if b"\0" in data[:4096]:
+            continue  # binary file
+        for match in jwt.finditer(data):
+            payload = match.group(1)
+            payload += b"=" * (-len(payload) % 4)
+            try:
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+            except Exception:
+                continue
+            if isinstance(claims, dict) and claims.get("role") == "service_role":
+                found.add(os.path.relpath(path, root))
+print("\n".join(sorted(found)))
+PY
+)"
+[ -z "$jwt_hits" ] || bad "JWT de Supabase con role=service_role en: $(echo "$jwt_hits" | head -5 | tr '\n' ' ')"
 scan "clave privada PEM"                        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
 
 # ── Our own infrastructure must not leak to customers ────────────────────
