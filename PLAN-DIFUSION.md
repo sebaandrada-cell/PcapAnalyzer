@@ -94,6 +94,9 @@ Sin emojis de viñeta: en una comunidad técnica restan credibilidad.
 
 ### LinkedIn (español)
 
+> **Versión definitiva en castellano y en inglés: `marketing/linkedin.md`** (con gancho
+> técnico, enlace a la demo y primer comentario). El texto de abajo es el borrador anterior.
+
 ```
 He lanzado una herramienta que llevaba tiempo queriendo construir: PcapAnalyzer.
 
