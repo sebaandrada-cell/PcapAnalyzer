@@ -53,6 +53,14 @@ export interface TcpConversation {
   mss_client: number | null
   mss_server: number | null
   handshake_rtt_ms: number | null
+  // Wireshark TCP-analysis counters (absent in results from older backends)
+  dup_acks?: number
+  out_of_order?: number
+  lost_segments?: number
+  window_full?: number
+  resets_midstream?: number
+  rtt_avg_ms?: number | null
+  rtt_max_ms?: number | null
 }
 
 export interface UdpConversation {
@@ -103,6 +111,34 @@ export interface PacketRow {
   length: number
   info: string
   stream: number | null
+  // Optional per-packet detail used by the display filter (absent in older results)
+  sport?: number | null
+  dport?: number | null
+  ttl?: number | null
+  tcp_flags?: string[]
+  seq?: number | null
+  ack?: number | null
+  win?: number | null
+  payload?: number | null
+  rtt_ms?: number | null
+  analysis?: string[]
+  expert?: ExpertSeverity | null
+  expert_message?: string | null
+}
+
+export type ExpertSeverity = 'error' | 'warning' | 'note' | 'chat'
+
+export interface ExpertEntry {
+  severity: ExpertSeverity
+  group: string
+  summary: string
+  count: number
+  first_packet: number
+}
+
+export interface ResolvedName {
+  address: string
+  name: string
 }
 
 export interface PacketListData {
@@ -189,6 +225,8 @@ export interface AnalysisResult {
   http_requests: HttpRequestRow[]
   service_response_times: ServiceResponseTime[]
   tls_sessions: TlsSession[]
+  expert_info?: ExpertEntry[]
+  resolved_names?: ResolvedName[]
   meta: Meta
 }
 

@@ -148,7 +148,7 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 - Tarjetas de métricas: paquetes, duración, conversaciones y problemas detectados.
 - Distribución de protocolos (barras horizontales) y top talkers con marca ⚠ en hosts implicados en issues, más túneles VPN detectados.
 - Gráfico temporal (Recharts): paquetes/s en azul y retransmisiones/s en rojo, con tooltip. La serie se mantiene dispersa para evitar crear un punto por cada segundo de capturas largas.
-- **Lista de paquetes estilo Wireshark** (nº, tiempo, origen, destino, protocolo, longitud e info) con filtro de texto libre, chips de filtrado rápido por protocolo y columnas ordenables; limitada a los primeros `PACKET_LIST_MAX` (1000) paquetes de la captura.
+- **Lista de paquetes estilo Wireshark** (nº, tiempo, origen, destino, protocolo, longitud e info) con **filtros de visualización estilo Wireshark** (subconjunto del lenguaje real evaluado en el navegador: `ip.addr == 10.0.0.0/8 && tcp.port in {80 443}`, `tcp.analysis.retransmission || tcp.flags.reset`, `_ws.col.info contains "SYN"`, `!`, `and/or/not`…; el filtro avisa de la posición del error y, si el texto no parece un filtro, se busca como texto libre), filtros rápidos con contadores (con problemas, retransmisiones, ACK duplicados, RST, ventana 0/llena, ICMP, DNS, experto), chips por protocolo, **colores** al estilo de las reglas de Wireshark, formatos de hora (desde el inicio, delta, UTC), **resolución de nombres** aprendida de las respuestas DNS de la captura, exportación a CSV (a prueba de inyección de fórmulas), panel de detalle del paquete (flags, seq/ack, ventana, TTL, RTT del ACK, análisis TCP e información experta) con «usar como filtro» / copiar, y columnas ordenables. Los issues y las conversaciones ofrecen «Ver paquetes» y «Copiar filtro Wireshark», y hay una tarjeta de **Información experta** (lo que Wireshark marca como anómalo, agrupado por mensaje). La lista está limitada a los primeros `PACKET_LIST_MAX` (1000) paquetes: los filtros solo ven esas filas, porque la captura se descarta tras el análisis.
 - **Tabla de consultas DNS** con el desenlace de cada consulta (OK / lenta / sin respuesta / SERVFAIL / NXDOMAIN) y su latencia.
 - **Tabla de peticiones HTTP** (método, host+URI y código de respuesta emparejado por stream, o "Sin respuesta").
 - **Propiedades de la captura** (primer/último paquete, tamaño medio, tasas) al estilo *Capture File Properties* de Wireshark.
@@ -256,8 +256,15 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 | `tcp_slow_handshake` | SYN → SYN-ACK > 500 ms (latencia alta o servidor saturado) | `warning` |
 | `dns_servfail` | Respuestas SERVFAIL de un servidor DNS | `warning` |
 | `dns_nxdomain` | Ráfaga de ≥ 3 NXDOMAIN hacia un mismo cliente (sufijo mal configurado / DGA) | `warning` |
+| `tcp_dup_acks` | ≥ 5 ACK duplicados en una conversación (`tcp.analysis.duplicate_ack`); señal de pérdida o reordenamiento | `warning` |
+| `tcp_out_of_order` | ≥ 5 segmentos fuera de orden; `warning` si ≥ 5 % de los paquetes (balanceo asimétrico / multipath) | `info` / `warning` |
+| `tcp_lost_segments` | «Previous segment not captured»; `warning` si hay ACK duplicados o retransmisiones (pérdida confirmada), `info` si puede ser límite de la captura | `info` / `warning` |
+| `tcp_window_full` | ≥ 3 veces el emisor llenó la ventana del receptor (`tcp.analysis.window_full`) | `warning` |
+| `tcp_resets` | RST **después** de un handshake completo, agregados; `warning` si afecta a ≥ 10 conversaciones | `info` / `warning` |
+| `icmp_unreachable` | ICMP/ICMPv6 destino inalcanzable por reportador y código (puerto, host, red, prohibido por administración) | `warning` |
+| `icmp_ttl_exceeded` | ≥ 5 «TTL exceeded» (bucle de enrutamiento) o reensamblado agotado | `warning` |
 
-Umbrales configurables por entorno (`app/config.py`, nada hardcodeado): `RETRANS_WARN_PCT`, `RETRANS_CRIT_PCT`, `RETRANS_MIN_PACKETS`, `SYN_RST_MAX_DELAY_S`, `DNS_SLOW_THRESHOLD_S`, `DNS_NXDOMAIN_MIN`, `TCP_HANDSHAKE_SLOW_S`, `TCP_ZERO_WINDOW_MIN_EVENTS`, `MSS_LOW_THRESHOLD`, `PMTUD_MIN_FULLSIZE_RETRANS`, `FRAG_HIGH_PCT`, `ESP_ONE_WAY_MIN`, `IKE_NO_RESPONSE_MIN`. Otras variables: `API_TOKENS`, `API_MAX_REQUESTS_PER_MINUTE`, `API_MAX_JOBS_PER_TOKEN`, `MAX_QUEUED_JOBS`, `MAX_UPLOAD_MB`, `MAX_DECOMPRESSED_MB`, `TSHARK_TIMEOUT_S`, `TSHARK_PATH`, `CORS_ORIGINS`, `TOP_TALKERS_LIMIT`.
+Umbrales configurables por entorno (`app/config.py`, nada hardcodeado): `RETRANS_WARN_PCT`, `RETRANS_CRIT_PCT`, `RETRANS_MIN_PACKETS`, `SYN_RST_MAX_DELAY_S`, `DNS_SLOW_THRESHOLD_S`, `DNS_NXDOMAIN_MIN`, `TCP_HANDSHAKE_SLOW_S`, `TCP_ZERO_WINDOW_MIN_EVENTS`, `MSS_LOW_THRESHOLD`, `PMTUD_MIN_FULLSIZE_RETRANS`, `FRAG_HIGH_PCT`, `ESP_ONE_WAY_MIN`, `IKE_NO_RESPONSE_MIN`, `TCP_DUP_ACK_MIN`, `TCP_OUT_OF_ORDER_MIN`, `TCP_LOST_SEGMENT_MIN`, `TCP_WINDOW_FULL_MIN`, `TCP_RESET_MIN_CONVS`, `ICMP_UNREACHABLE_MIN`, `ICMP_TTL_EXCEEDED_MIN`. Otras variables: `API_TOKENS`, `API_MAX_REQUESTS_PER_MINUTE`, `API_MAX_JOBS_PER_TOKEN`, `MAX_QUEUED_JOBS`, `MAX_UPLOAD_MB`, `MAX_DECOMPRESSED_MB`, `TSHARK_TIMEOUT_S`, `TSHARK_PATH`, `CORS_ORIGINS`, `TOP_TALKERS_LIMIT`.
 
 ### Qué diagnostica por capa OSI
 

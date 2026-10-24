@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AnalysisResult, Issue, QueryResponse, TopTalker } from './api'
 import { ASYNC_THRESHOLD_BYTES, analyzePcap, analyzePcapAsync, queryFilter } from './api'
 import CaptureProperties from './components/CaptureProperties'
@@ -11,7 +11,9 @@ import Header from './components/Header'
 import HttpRequests from './components/HttpRequests'
 import ServiceResponseTimes from './components/ServiceResponseTimes'
 import TlsSessions from './components/TlsSessions'
+import ExpertInfo from './components/ExpertInfo'
 import PacketList from './components/PacketList'
+import { nameMap } from './packetView'
 import IssuesList, { issueStreamId } from './components/IssuesList'
 import MetricCards from './components/MetricCards'
 import OsiCoverage from './components/OsiCoverage'
@@ -38,6 +40,18 @@ function Dashboard({ demo }: { demo?: DemoData }) {
   const [queryLoading, setQueryLoading] = useState(false)
   const [queryError, setQueryError] = useState<string | null>(null)
   const [diagnosis, setDiagnosis] = useState<string | null>(null)
+  const [filterRequest, setFilterRequest] = useState<{ text: string; id: number } | null>(null)
+  const names = useMemo(() => nameMap(result?.resolved_names), [result])
+
+  // Put a display filter in the packet list (from an issue, the expert table or a conversation).
+  const showPackets = useCallback((text: string) => {
+    setSelection(null)
+    setFilterRequest({ text, id: Date.now() })
+    window.setTimeout(
+      () => document.getElementById('packet-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      0,
+    )
+  }, [])
 
   const handleFile = useCallback((file: File) => {
     setAnalyzing(true)
@@ -45,6 +59,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
     setQuery(null)
     setQueryError(null)
     setDiagnosis(null)
+    setFilterRequest(null)
     // Large captures go through the async queue instead of blocking /analyze.
     const analyze = file.size > ASYNC_THRESHOLD_BYTES ? analyzePcapAsync : analyzePcap
     analyze(file)
@@ -122,6 +137,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
           setQuery(null)
           setQueryError(null)
           setDiagnosis(null)
+          setFilterRequest(null)
         }}
       />
       <QueryBar
@@ -141,13 +157,24 @@ function Dashboard({ demo }: { demo?: DemoData }) {
       )}
       <div className="columns">
         <ProtocolBars protocols={result.protocols} />
-        <TopTalkers result={result} onSelect={handleTalkerSelect} />
+        <TopTalkers result={result} names={names} onSelect={handleTalkerSelect} />
       </div>
       <TrafficChart series={result.time_series} duration={result.summary.duration_seconds} />
       <CaptureProperties result={result} />
       <OsiCoverage />
       <ServiceResponseTimes rows={result.service_response_times} />
-      <PacketList data={result.packet_list} streamIds={matchedStreamIds} />
+      <PacketList
+        data={result.packet_list}
+        streamIds={matchedStreamIds}
+        queryFilter={query?.filter ?? null}
+        names={names}
+        startEpoch={result.summary.start_time_epoch}
+        filterRequest={filterRequest}
+      />
+      <ExpertInfo
+        entries={result.expert_info ?? []}
+        onShowPacket={(packet) => showPackets(`frame.number == ${packet}`)}
+      />
       <HttpRequests requests={result.http_requests} />
       <DnsQueries queries={result.dns_queries} />
       <DhcpLeases leases={result.dhcp_leases ?? []} />
@@ -156,6 +183,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
         issues={visibleIssues}
         highlightedIds={query ? new Set(query.matched_issue_ids) : null}
         onSelect={handleIssueSelect}
+        onShowPackets={showPackets}
       />
       <DiagnosisPanel analysis={result} onGenerated={setDiagnosis} demoText={demo?.diagnosis[lang]} />
       <div className="footer-note">
@@ -167,6 +195,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
           selection={selection}
           onNavigate={setSelection}
           onClose={() => setSelection(null)}
+          onShowPackets={showPackets}
         />
       )}
     </>

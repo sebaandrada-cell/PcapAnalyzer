@@ -1,0 +1,37 @@
+# Fast checks for the frontend: the pure-TypeScript unit tests (display filter,
+# issue filters, packet-view helpers), the linter and the type check.
+# The tests run with `node --test`, which strips types natively on Node >= 22.6.
+name: Frontend checks
+
+on:
+  push:
+    branches: [main]
+    paths: ['frontend/**', '.github/workflows/frontend-tests.yml']
+  pull_request:
+    paths: ['frontend/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npx tsc -p tsconfig.app.json --noEmit

@@ -4,10 +4,11 @@ import { useSettings } from '../settings'
 
 interface Props {
   result: AnalysisResult
+  names?: Map<string, string>
   onSelect: (talker: TopTalker) => void
 }
 
-export default function TopTalkers({ result, onSelect }: Props) {
+export default function TopTalkers({ result, names, onSelect }: Props) {
   const { t } = useSettings()
   const talkers = result.conversations.top_talkers.slice(0, 6)
   // Hosts mentioned in issues get a warning mark, as in the mockup.
@@ -32,6 +33,9 @@ export default function TopTalkers({ result, onSelect }: Props) {
             <span className="mono">
               {talker.address}
               {flagged.has(talker.address) && <span className="warn-mark">⚠</span>}
+              {names?.get(talker.address) && (
+                <span className="resolved-name">{names.get(talker.address)}</span>
+              )}
             </span>
             <span className="bytes">{formatBytes(talker.bytes_total)}</span>
           </li>

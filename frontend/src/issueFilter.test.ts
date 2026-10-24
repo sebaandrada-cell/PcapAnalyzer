@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import type { Issue } from './api.ts'
+import { compileFilter } from './displayFilter.ts'
+import { issueFilter, quoteString } from './issueFilter.ts'
+
+function issue(type: string, evidence: Record<string, unknown>): Issue {
+  return { id: type, type, severity: 'warning', title: '', detail: '', conversation: null, evidence }
+}
+
+test('TCP issues map to their stream', () => {
+  assert.equal(issueFilter(issue('tcp_syn_rst', { stream_id: 3 })), 'tcp.stream eq 3')
+  assert.equal(issueFilter(issue('tls_handshake_failure', { tcp_stream: 7 })), 'tcp.stream eq 7')
+  assert.equal(issueFilter(issue('tcp_resets', { stream_ids: [1, 4, 9] })), 'tcp.stream in {1 4 9}')
+})
+
+test('ICMP and DNS issues map to a filter on the reporter or the name', () => {
+  assert.equal(
+    issueFilter(issue('icmp_unreachable', { reporter: '10.1.0.254', icmp_type: 3, code: 1 })),
+    'ip.src == 10.1.0.254 && icmp && _ws.col.info matches "unreachable"',
+  )
+  assert.match(issueFilter(issue('icmp_ttl_exceeded', { reporter: 'fe80::1', icmp_type: 3 }))!, /^ipv6\.src == fe80::1 && icmpv6/)
+  assert.equal(
+    issueFilter(issue('dns_unanswered', { query_name: 'a"b.example', server: '8.8.8.8' })),
+    'dns && _ws.col.info contains "a\\"b.example"',
+  )
+  assert.equal(issueFilter(issue('dns_servfail', { server: '8.8.8.8' })), 'dns && ip.addr == 8.8.8.8')
+})
+
+test('issues without identifying evidence give null', () => {
+  assert.equal(issueFilter(issue('mss_low', {})), null)
+})
+
+test('every generated filter compiles with the display-filter engine', () => {
+  const samples = [
+    issue('tcp_syn_rst', { stream_id: 3 }),
+    issue('tcp_resets', { stream_ids: [1, 4] }),
+    issue('icmp_unreachable', { reporter: '10.1.0.254', icmp_type: 3 }),
+    issue('icmp_ttl_exceeded', { reporter: '2001:db8::1', icmp_type: 3 }),
+    issue('dns_unanswered', { query_name: 'x.example', server: '1.1.1.1' }),
+    issue('dns_servfail', { server: '2001:db8::53' }),
+    issue('ip_duplicate', { ip: '10.0.0.9' }),
+    issue('ip_fragmentation_high', {}),
+    issue('esp_one_way', {}),
+    issue('ike_no_response', {}),
+  ]
+  for (const sample of samples) {
+    const filter = issueFilter(sample)
+    assert.ok(filter, sample.type)
+    const compiled = compileFilter(filter)
+    assert.ok(compiled.ok, `${sample.type}: ${filter}`)
+  }
+})
+
+test('quoteString escapes quotes and backslashes', () => {
+  assert.equal(quoteString('a\\b"c'), '"a\\\\b\\"c"')
+})

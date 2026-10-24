@@ -1,6 +1,8 @@
 import type { AnalysisResult, Issue, PacketRow, Severity, TcpConversation, UdpConversation } from '../api'
 import { formatBytes, formatDecimal, formatDuration, formatNumber } from '../format'
+import { conversationFilter } from '../displayFilter'
 import { useSettings } from '../settings'
+import { useState } from 'react'
 import FlowGraph from './FlowGraph'
 import { issueStreamId } from './IssuesList'
 
@@ -13,6 +15,8 @@ interface Props {
   selection: Selection
   onNavigate: (selection: Selection) => void
   onClose: () => void
+  /** Close the modal and show these packets in the packet list. */
+  onShowPackets?: (filter: string) => void
 }
 
 function KV({ k, v }: { k: string; v: string }) {
@@ -28,12 +32,37 @@ function ConversationDetail({
   conv,
   issues,
   packets,
+  onShowPackets,
 }: {
   conv: TcpConversation
   issues: Issue[]
   packets: PacketRow[]
+  onShowPackets?: (filter: string) => void
 }) {
   const { t } = useSettings()
+  const [copied, setCopied] = useState(false)
+  const filter = `tcp.stream eq ${conv.stream_id}`
+  const addressFilter = conversationFilter(
+    { src: conv.src, dst: conv.dst, sport: conv.src_port, dport: conv.dst_port },
+    'tcp',
+  )
+  const copyFilter = async () => {
+    try {
+      await navigator.clipboard.writeText(addressFilter)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+  // Counters added with the Wireshark TCP-analysis support; absent in older results.
+  const analysisCounters: [string, number | undefined][] = [
+    ['modal.dupAcks', conv.dup_acks],
+    ['modal.outOfOrder', conv.out_of_order],
+    ['modal.lostSegments', conv.lost_segments],
+    ['modal.windowFull', conv.window_full],
+    ['modal.resetsMid', conv.resets_midstream],
+  ]
   const severityLabel = (severity: Severity) => t(`issues.${severity}`)
   return (
     <>
@@ -54,6 +83,27 @@ function ConversationDetail({
           k={t('modal.rtt')}
           v={conv.handshake_rtt_ms != null ? `${formatDecimal(conv.handshake_rtt_ms, 1)} ms` : '—'}
         />
+        {analysisCounters
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => (
+            <KV key={key} k={t(key)} v={formatNumber(value ?? 0)} />
+          ))}
+        {conv.rtt_avg_ms != null && (
+          <KV k={t('modal.rttAvg')} v={`${formatDecimal(conv.rtt_avg_ms, 1)} ms`} />
+        )}
+        {conv.rtt_max_ms != null && (
+          <KV k={t('modal.rttMax')} v={`${formatDecimal(conv.rtt_max_ms, 1)} ms`} />
+        )}
+      </div>
+      <div className="modal-actions">
+        {onShowPackets && (
+          <button className="chip small" onClick={() => onShowPackets(filter)} title={filter}>
+            {t('modal.showPackets')}
+          </button>
+        )}
+        <button className="chip small" onClick={copyFilter} title={addressFilter}>
+          {copied ? t('modal.copied') : t('modal.copyFilter')}
+        </button>
       </div>
       {issues.length > 0 && (
         <>
@@ -128,7 +178,7 @@ function HostDetail({
   )
 }
 
-export default function ConversationModal({ result, selection, onNavigate, onClose }: Props) {
+export default function ConversationModal({ result, selection, onNavigate, onClose, onShowPackets }: Props) {
   const { t } = useSettings()
   let title: string
   let body: React.ReactNode
@@ -138,7 +188,7 @@ export default function ConversationModal({ result, selection, onNavigate, onClo
     title = `${conv.src}:${conv.src_port} ⇄ ${conv.dst}:${conv.dst_port}`
     const related = result.issues.filter((issue) => issueStreamId(issue) === conv.stream_id)
     const packets = result.packet_list.rows.filter((row) => row.stream === conv.stream_id)
-    body = <ConversationDetail conv={conv} issues={related} packets={packets} />
+    body = <ConversationDetail conv={conv} issues={related} packets={packets} onShowPackets={onShowPackets} />
   } else {
     title = t('modal.hostTitle', { addr: selection.address })
     body = <HostDetail result={result} address={selection.address} onNavigate={onNavigate} />

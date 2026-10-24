@@ -22,5 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Unit tests run with `node --test` (type stripping); they are not part of the browser bundle.
+  "exclude": ["src/**/*.test.ts"]
 }
