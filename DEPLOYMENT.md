@@ -50,7 +50,7 @@ la autenticación de cada usuario.
    - `CORS_ORIGINS`: por ahora se puede poner `http://localhost:5173`; más
      adelante añade aquí el dominio `https://<tu-app>.vercel.app`.
 3. Despliega el servicio. La URL será similar a
-   `https://pcapanalyzer-api.onrender.com`. Comprueba que
+   `https://<tu-servicio>.onrender.com`. Comprueba que
    `https://<url-api>/health` devuelve `"status": "ok"` y que `"auth"` informa
    `"mode": "supabase"`.
 
@@ -67,7 +67,7 @@ lo vuelve a desplegar.
    - `VITE_SUPABASE_URL`: la Project URL de Supabase.
    - `VITE_SUPABASE_ANON_KEY`: la clave `anon`/publishable de Supabase.
    - `VITE_API_URL`: la URL de Render, por ejemplo
-     `https://pcapanalyzer-api.onrender.com` (sin `/` final).
+     `https://<tu-servicio>.onrender.com` (sin `/` final).
 4. Despliega y copia la URL gratuita `https://<tu-app>.vercel.app`.
 5. Vuelve a Render y añade esa URL a `CORS_ORIGINS`. Si conservas el acceso de
    desarrollo local, sepárala con una coma:
