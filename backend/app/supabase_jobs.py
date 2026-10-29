@@ -60,10 +60,14 @@ class SupabaseJobStore:
         self._storage_url = "%s/storage/v1/object" % config.SUPABASE_URL
 
     def _storage_headers(self) -> Dict[str, str]:
-        return {
-            "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": "Bearer %s" % config.SUPABASE_SERVICE_ROLE_KEY,
-        }
+        key = config.SUPABASE_SERVICE_ROLE_KEY
+        headers = {"apikey": key}
+        # Legacy service_role keys are JWTs and also go in Authorization. The newer
+        # secret keys (sb_secret_...) are not JWTs and must only be sent as apikey:
+        # as a Bearer token Supabase rejects them.
+        if not key.startswith("sb_"):
+            headers["Authorization"] = "Bearer %s" % key
+        return headers
 
     def _object_url(self, storage_key: str) -> str:
         bucket = quote(config.SUPABASE_STORAGE_BUCKET, safe="")

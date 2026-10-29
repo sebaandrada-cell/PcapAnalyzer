@@ -127,3 +127,18 @@ def test_submit_cleans_up_and_records_failed_upload(monkeypatch):
         "SET status = 'error'" in query
         for query, _ in connection.statements
     )
+
+
+def test_storage_headers_legacy_jwt_key_goes_in_both_headers(monkeypatch):
+    store = make_store(monkeypatch)
+    monkeypatch.setattr(config, "SUPABASE_SERVICE_ROLE_KEY", "eyJ.legacy.jwt")
+    assert store._storage_headers() == {
+        "apikey": "eyJ.legacy.jwt",
+        "Authorization": "Bearer eyJ.legacy.jwt",
+    }
+
+
+def test_storage_headers_new_secret_key_is_only_sent_as_apikey(monkeypatch):
+    store = make_store(monkeypatch)
+    monkeypatch.setattr(config, "SUPABASE_SERVICE_ROLE_KEY", "sb_secret_example")
+    assert store._storage_headers() == {"apikey": "sb_secret_example"}
