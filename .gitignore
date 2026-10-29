@@ -14,3 +14,6 @@ backend/.webui_secret_key
 
 # Built customer downloads (made by scripts/build-release.sh) never go in git.
 release/
+
+# Supabase CLI local link state (project ref, pooler URL)
+supabase/.temp/
