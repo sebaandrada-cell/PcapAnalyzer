@@ -28,6 +28,7 @@ from .auth import (
     authenticate_authorization_header,
     require_api_token_no_rate_limit,
 )
+from .guards import client_ip, ip_limiter
 from .jobs import JobCapacityError, job_store
 from .llm.client import availability as ai_availability
 from .llm.router import router as ai_router
@@ -87,6 +88,9 @@ app = FastAPI(
     version=__version__,
     description="Análisis de capturas .pcap/.pcapng basado en tshark.",
     lifespan=lifespan,
+    docs_url="/docs" if config.DOCS_ENABLED else None,
+    redoc_url="/redoc" if config.DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if config.DOCS_ENABLED else None,
 )
 
 app.include_router(ai_router)
@@ -118,11 +122,61 @@ async def authenticate_api_requests(
     return await call_next(request)
 
 
+@app.middleware("http")
+async def throttle_and_cap_body(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Per-IP throttle and body-size cap, applied before auth and parsing.
+
+    Registered after ``authenticate_api_requests`` so it runs first (Starlette
+    runs the last-added middleware outermost). Bots hitting any route are
+    stopped here at no database or egress cost.
+    """
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    ip = client_ip(request)
+    path = request.url.path
+    try:
+        ip_limiter.check("all:" + ip, config.IP_MAX_REQUESTS_PER_MINUTE)
+        if path in {"/analyze", "/analyze/async"}:
+            ip_limiter.check("up:" + ip, config.IP_MAX_UPLOADS_PER_MINUTE)
+    except HTTPException as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=exc.headers,
+        )
+    # Uploads may be MAX_UPLOAD_MB (+ multipart overhead); everything else is JSON.
+    limit = (
+        (config.MAX_UPLOAD_MB + 1) * 1024 * 1024
+        if path in {"/analyze", "/analyze/async"}
+        else 4 * 1024 * 1024
+    )
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            too_big = int(declared) > limit
+        except ValueError:
+            too_big = True
+        if too_big:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Cuerpo de la solicitud demasiado grande."},
+            )
+    elif request.method in {"POST", "PUT", "PATCH"}:
+        return JSONResponse(
+            status_code=411,
+            content={"detail": "Se requiere Content-Length."},
+        )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

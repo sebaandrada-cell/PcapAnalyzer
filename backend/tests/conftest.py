@@ -21,6 +21,18 @@ def _no_demo_mode(monkeypatch):
     monkeypatch.setattr(config, "LLM_DEMO", False)
 
 
+@pytest.fixture(autouse=True)
+def _relaxed_ip_guards(monkeypatch):
+    """Every test shares one client IP; keep the per-IP/daily guards out of the way."""
+    from app import config, guards
+
+    monkeypatch.setattr(config, "IP_MAX_REQUESTS_PER_MINUTE", 0)
+    monkeypatch.setattr(config, "IP_MAX_UPLOADS_PER_MINUTE", 0)
+    monkeypatch.setattr(config, "LLM_MAX_CALLS_PER_DAY", 0)
+    monkeypatch.setattr(config, "LLM_MAX_CALLS_PER_DAY_GLOBAL", 0)
+    guards.ip_limiter._hits.clear()
+
+
 @pytest.fixture(scope="session")
 def sample_pcap() -> Path:
     """Deterministic sample capture, regenerated on every test run."""

@@ -12,10 +12,18 @@ except ImportError:  # pragma: no cover
     from typing_extensions import Literal
 
 from ..models import AnalysisResult
-from ..auth import require_api_token_no_rate_limit
+from ..auth import Principal, require_api_token_no_rate_limit
+from ..guards import llm_budget
 from .service import AIServiceError, AIUnavailableError, diagnose, translate_query
 
-router = APIRouter(dependencies=[Depends(require_api_token_no_rate_limit)])
+def _charge_llm_budget(
+    principal: Principal = Depends(require_api_token_no_rate_limit),
+) -> None:
+    """Hard daily cap on paid model calls (see LLM_MAX_CALLS_PER_DAY*)."""
+    llm_budget.consume(principal.tenant_id)
+
+
+router = APIRouter(dependencies=[Depends(_charge_llm_budget)])
 
 Lang = Literal["es", "en"]
 
