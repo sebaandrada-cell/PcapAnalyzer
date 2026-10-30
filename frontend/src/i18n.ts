@@ -400,7 +400,7 @@ const es: Dict = {
     delete:
       'Desde los ajustes de tu navegador (borrar datos del sitio), o con las herramientas de desarrollo (Aplicación, Almacenamiento local). Si lo borras, la app vuelve a los valores por defecto. El almacenamiento de sesión se elimina al cerrar la pestaña.',
     contactTitle: 'Contacto',
-    contact: 'Pendiente de indicar: titular y correo de contacto.',
+    contact: 'Responsable: Noviembrepunk. Contacto: noviembrepunk@gmail.com.',
   },
   cookieNotice: {
     label: 'Aviso de almacenamiento',
@@ -812,7 +812,7 @@ const en: Dict = {
     delete:
       'From your browser settings (clear site data), or with the developer tools (Application, Local storage). If you delete it, the app returns to its defaults. Session storage is removed when you close the tab.',
     contactTitle: 'Contact',
-    contact: 'To be filled in: owner and contact email.',
+    contact: 'Owner: Noviembrepunk. Contact: noviembrepunk@gmail.com.',
   },
   cookieNotice: {
     label: 'Storage notice',
