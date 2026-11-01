@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { GOOGLE_LOGIN } from '../authConfig'
 import { TURNSTILE_SITE_KEY } from '../contactConfig'
 import { useSettings } from '../settings'
 import { supabaseClient } from '../supabase'
@@ -101,6 +102,22 @@ export default function SupabaseAuthGate({ children }: Props) {
     }
   }
 
+  async function handleGoogle() {
+    if (!supabaseClient) return
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    const { error: oauthError } = await supabaseClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/` },
+    })
+    // On success the browser leaves for Google; we only get here when it failed.
+    if (oauthError) {
+      setError(oauthError.message || t('auth.failed'))
+      setBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <>
@@ -120,6 +137,14 @@ export default function SupabaseAuthGate({ children }: Props) {
           <form className="auth-card" onSubmit={handleSubmit}>
             <h1>{t(signUp ? 'auth.signUpTitle' : 'auth.signInTitle')}</h1>
             <p className="sub">{t('auth.description')}</p>
+            {GOOGLE_LOGIN && (
+              <>
+                <button className="auth-google" type="button" disabled={busy} onClick={handleGoogle}>
+                  {t('auth.google')}
+                </button>
+                <div className="auth-sep" role="separator">{t('auth.or')}</div>
+              </>
+            )}
             <label>
               <span>{t('auth.email')}</span>
               <input
