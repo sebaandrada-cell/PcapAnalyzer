@@ -919,9 +919,6 @@ class FakeStream:
 
 class FakeClient:
     def __init__(self, scripted): self.scripted = list(scripted); self.calls = []
-    class beta:
-        pass
-    def __post_init__(self): pass
 def make_client(scripted):
     c = FakeClient(scripted)
     def stream(**kwargs):
@@ -991,7 +988,7 @@ def test_run_turn_compacts_when_history_is_large(session, monkeypatch):
 
 - [ ] **Step 2: Ejecutar y ver que fallan.**
 
-- [ ] **Step 3: Implementar `app/agent/runner.py`** según la interfaz. Estimación de tokens del historial: `len(json.dumps(messages)) // 4`. Los bloques de `final.content` se convierten a dict con `block.model_dump()` cuando exista, si no con `vars()`; `thinking`/`compaction` se conservan tal cual. La ejecución de herramientas abre `session_store.decrypted_pcap(session)` una vez por lote. Los `tool_start` llevan `{"name", "label"}` con `label` legible (p. ej. `filter_packets: tcp.stream eq 7`); los `tool_end` llevan `{"name", "ms", "is_error", "truncated"}`.
+- [ ] **Step 3: Implementar `app/agent/runner.py`** según la interfaz. Importar `from .. import sessions` y usar `sessions.session_store` (atributo de módulo) para que los tests puedan sustituirlo; el fixture hace `runner.session_store = store`, así que expón también `session_store` como nombre del módulo `runner` y úsalo a través de `globals()`-friendly access (`session_store.decrypted_pcap(...)`, resuelto en tiempo de llamada). Estimación de tokens del historial: `len(json.dumps(messages)) // 4`. Los bloques de `final.content` se convierten a dict con `block.model_dump()` cuando exista, si no con `vars()`; `thinking`/`compaction` se conservan tal cual. La ejecución de herramientas abre `session_store.decrypted_pcap(session)` una vez por lote. Los `tool_start` llevan `{"name", "label"}` con `label` legible (p. ej. `filter_packets: tcp.stream eq 7`); los `tool_end` llevan `{"name", "ms", "is_error", "truncated"}`.
 
 - [ ] **Step 4: Ejecutar y ver que pasan.**
 
