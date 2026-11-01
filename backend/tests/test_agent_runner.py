@@ -159,3 +159,34 @@ def test_run_turn_compacts_when_history_is_large(session, monkeypatch):
     client = make_client([_msg([_text("ok")])])
     runner.run_turn(session, "más", "es", "/usr/bin/tshark", lambda e: None, client=client)
     assert client.calls[0]["context_management"] == {"edits": [{"type": "compact_20260112"}]}
+
+
+def test_run_turn_maps_api_errors_to_user_messages(session):
+    import anthropic
+    import httpx
+
+    from app.llm.service import AIServiceError, AIUnavailableError
+
+    def failing_client(exc):
+        c = FakeClient([])
+
+        def stream(**kwargs):
+            raise exc
+
+        c.beta = SimpleNamespace(messages=SimpleNamespace(stream=stream))
+        return c
+
+    response = httpx.Response(401, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    with pytest.raises(AIUnavailableError) as exc:
+        runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None,
+                        client=failing_client(anthropic.AuthenticationError("bad key", response=response, body=None)))
+    assert "ANTHROPIC_API_KEY" in str(exc.value)
+    response429 = httpx.Response(429, request=response.request)
+    with pytest.raises(AIServiceError) as exc:
+        runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None,
+                        client=failing_client(anthropic.RateLimitError("slow down", response=response429, body=None)))
+    assert exc.value.status_code == 429
+    with pytest.raises(AIServiceError):
+        runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None,
+                        client=failing_client(anthropic.APIConnectionError(request=response.request)))
+    assert session.messages == []

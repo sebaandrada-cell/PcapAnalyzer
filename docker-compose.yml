@@ -7,7 +7,7 @@ services:
     build: ./backend
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-claude-opus-4-8}
+      - LLM_MODEL=${LLM_MODEL:-claude-opus-5-5}
       # Demo mode: simulated AI answers, no key and no cost. It takes priority
       # over a real key, so set LLM_DEMO=0 once ANTHROPIC_API_KEY is filled in.
       - LLM_DEMO=${LLM_DEMO:-}
@@ -33,6 +33,22 @@ services:
       - MAX_HTTP_REQUESTS=${MAX_HTTP_REQUESTS:-10000}
       - MAX_TLS_SESSIONS=${MAX_TLS_SESSIONS:-10000}
       - MAX_FRAGMENT_GROUPS=${MAX_FRAGMENT_GROUPS:-20000}
+      # Investigation sessions (the capture stays encrypted on local disk while
+      # you chat with the AI) and the agent's hard caps. See README "Investigación con IA".
+      - SESSIONS_ENABLED=${SESSIONS_ENABLED:-1}
+      - SESSION_TTL_MINUTES=${SESSION_TTL_MINUTES:-60}
+      - MAX_SESSIONS=${MAX_SESSIONS:-20}
+      - MAX_SESSION_BYTES=${MAX_SESSION_BYTES:-2147483648}
+      - SESSION_MAX_TOKENS=${SESSION_MAX_TOKENS:-2000000}
+      - TOOL_TIMEOUT_S=${TOOL_TIMEOUT_S:-30}
+      - TOOL_MAX_ROWS=${TOOL_MAX_ROWS:-200}
+      - TOOL_MAX_OUTPUT_BYTES=${TOOL_MAX_OUTPUT_BYTES:-65536}
+      - AGENT_MAX_TOOL_CALLS=${AGENT_MAX_TOOL_CALLS:-25}
+      - AGENT_MAX_MODEL_CALLS=${AGENT_MAX_MODEL_CALLS:-20}
+      - AGENT_TASK_BUDGET_TOKENS=${AGENT_TASK_BUDGET_TOKENS:-60000}
+      - AGENT_WORKERS=${AGENT_WORKERS:-2}
+      - AGENT_EFFORT=${AGENT_EFFORT:-high}
+      - AGENT_COMPACT_TOKENS=${AGENT_COMPACT_TOKENS:-150000}
     restart: unless-stopped
 
   frontend:

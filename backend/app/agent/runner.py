@@ -101,6 +101,30 @@ def _budget_exhausted_results(tool_uses: List[Any]) -> List[dict]:
     return [tool_result_block(block.id, result) for block in tool_uses]
 
 
+def _map_api_error(exc: Exception) -> Exception:
+    """Most-specific-first mapping of anthropic SDK errors; unknown errors pass through."""
+    try:
+        import anthropic
+    except Exception:  # pragma: no cover
+        return exc
+    if isinstance(exc, anthropic.AuthenticationError):
+        return AIUnavailableError(
+            "La API de Anthropic rechazó la clave (401). Revisa ANTHROPIC_API_KEY en el backend y reinícialo."
+        )
+    if isinstance(exc, anthropic.PermissionDeniedError):
+        return AIServiceError("La clave de Anthropic no tiene permiso para este modelo (403).", status_code=403)
+    if isinstance(exc, anthropic.RateLimitError):
+        return AIServiceError(
+            "Límite de peticiones de la API de Anthropic alcanzado; inténtalo de nuevo en unos segundos.",
+            status_code=429,
+        )
+    if isinstance(exc, anthropic.APIStatusError):
+        return AIServiceError("Error de la API de Anthropic (%s)." % exc.status_code)
+    if isinstance(exc, anthropic.APIConnectionError):
+        return AIServiceError("No se pudo conectar con la API de Anthropic.")
+    return exc
+
+
 def run_turn(
     session: Session,
     user_text: str,
@@ -153,11 +177,14 @@ def run_turn(
             kwargs["betas"] = kwargs["betas"] + [_COMPACT_BETA]
 
         pieces: List[str] = []
-        with client.beta.messages.stream(**kwargs) as stream:
-            for delta in stream.text_stream:
-                pieces.append(delta)
-                emit(TurnEvent("text", {"delta": delta}))
-            final = stream.get_final_message()
+        try:
+            with client.beta.messages.stream(**kwargs) as stream:
+                for delta in stream.text_stream:
+                    pieces.append(delta)
+                    emit(TurnEvent("text", {"delta": delta}))
+                final = stream.get_final_message()
+        except Exception as exc:  # translate SDK errors into messages the user can act on
+            raise _map_api_error(exc) from exc
         model_calls += 1
         _add_usage(totals, final.usage)
         history.append({"role": "assistant", "content": [_block_to_dict(b) for b in final.content]})
