@@ -1,3 +1,4 @@
+import { CONTACT_ENABLED } from '../contactConfig'
 import { useSettings } from '../settings'
 
 // Short storage policy (informational; no consent needed, LSSI art. 22.2).
@@ -48,7 +49,7 @@ export default function CookiePolicy() {
       <p>{t('cookies.delete')}</p>
       <h2>{t('cookies.contactTitle')}</h2>
       <p>
-        {t('cookies.contact')} <a href="#contacto">{t('contact.link')}</a>
+        {t('cookies.contact')} {CONTACT_ENABLED && <a href="#contacto">{t('contact.link')}</a>}
       </p>
     </main>
   )

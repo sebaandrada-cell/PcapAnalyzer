@@ -21,5 +21,8 @@ scripts           export-ignore
 # Public demo data (hosted build only); the self-hosted download does not use it.
 frontend/public/demo  export-ignore
 
+# Contact form function of our hosted beta (Vercel + Resend + Turnstile); names our domains.
+frontend/api  export-ignore
+
 # Marketing screenshots, not part of the product.
 marketing  export-ignore

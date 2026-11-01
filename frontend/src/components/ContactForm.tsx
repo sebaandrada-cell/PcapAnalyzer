@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { TURNSTILE_SITE_KEY } from '../contactConfig'
 import { useSettings } from '../settings'
 
 // Contact form (no public email anywhere). It posts to the Vercel function /api/contacto,
 // which checks Cloudflare Turnstile and forwards the message to a mailbox kept in an env var.
 // Reached through the `#contacto` fragment so it works before signing in.
 
-const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined
+const SITE_KEY = TURNSTILE_SITE_KEY
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 const MAX_MESSAGE = 2000
 
