@@ -127,7 +127,9 @@ def test_run_turn_enforces_tool_cap(session, monkeypatch):
     result = runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None, client=client)
     assert result.limited is True and result.text == "cierre"
     last = client.calls[-1]
-    assert last["tools"] == [] and last["messages"][-1]["role"] == "system"
+    # The tool set stays (API + cache prefix); the closing call forbids further calls.
+    assert len(last["tools"]) == len(client.calls[0]["tools"]) and last["tool_choice"] == {"type": "none"}
+    assert last["messages"][-1]["role"] == "system"
 
 
 def test_run_turn_failure_leaves_history_untouched(session):
@@ -189,4 +191,74 @@ def test_run_turn_maps_api_errors_to_user_messages(session):
     with pytest.raises(AIServiceError):
         runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None,
                         client=failing_client(anthropic.APIConnectionError(request=response.request)))
+    assert session.messages == []
+
+
+# ---- final-review fixes ------------------------------------------------------------
+def test_limited_call_keeps_tools_and_disables_tool_choice(session, monkeypatch):
+    """C1: the closing call must keep the tool set (API + cache prefix) and use tool_choice none."""
+    monkeypatch.setattr(config, "AGENT_MAX_TOOL_CALLS", 1)
+    client = make_client([
+        _msg([_tool("a", "protocol_reference", {"topic": "tls"})], stop="tool_use"),
+        _msg([_tool("b", "protocol_reference", {"topic": "tls"})], stop="tool_use"),
+        _msg([_text("parte 1")], stop="max_tokens"),
+        _msg([_text("parte 2")]),
+    ])
+    result = runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None, client=client)
+    assert result.limited is True
+    closing = client.calls[2]
+    assert len(closing["tools"]) == len(client.calls[0]["tools"])
+    assert closing["tool_choice"] == {"type": "none"}
+    system_notes = [m for m in client.calls[3]["messages"] if m["role"] == "system"]
+    assert len(system_notes) == 1  # appended once, not on every limited iteration
+
+
+def test_history_carries_one_cache_breakpoint_at_the_end(session):
+    """I1: the last user message of every call carries the cache breakpoint."""
+    client = make_client([
+        _msg([_tool("a", "protocol_reference", {"topic": "tls"})], stop="tool_use"),
+        _msg([_text("ok")]),
+    ])
+    runner.run_turn(session, "hola", "es", "/usr/bin/tshark", lambda e: None, client=client)
+    for call in client.calls:
+        marked = [m for m in call["messages"] if isinstance(m["content"], list)
+                  and m["content"] and m["content"][-1].get("cache_control")]
+        assert len(marked) == 1 and marked[0] is call["messages"][-1]
+    assert session.messages[-2]["content"][-1].get("cache_control") is None  # not persisted
+
+
+def test_cancel_stops_turn_without_persisting(session):
+    """C2: a cancelled turn (client gone) ends at the next event and leaves history untouched."""
+    import threading
+
+    cancel = threading.Event()
+    client = make_client([
+        _msg([_tool("a", "protocol_reference", {"topic": "tls"})], stop="tool_use"),
+        _msg([_text("nunca")]),
+    ])
+
+    def emit(event):
+        cancel.set()
+
+    with pytest.raises(runner.TurnCancelled):
+        runner.run_turn(session, "hola", "es", "/usr/bin/tshark", emit, client=client, cancel=cancel)
+    assert session.messages == [] and session.usage.questions == 0
+
+
+def test_session_gone_mid_turn_is_reported_distinctly(session, monkeypatch):
+    """I5: a vanished capture closes the pending tool steps and raises SessionGoneError."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def gone(_session):
+        raise FileNotFoundError("pcap gone")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(runner.session_store, "decrypted_pcap", gone)
+    client = make_client([_msg([_tool("a", "protocol_reference", {"topic": "tls"})], stop="tool_use")])
+    events = []
+    with pytest.raises(runner.SessionGoneError):
+        runner.run_turn(session, "hola", "es", "/usr/bin/tshark", events.append, client=client)
+    ends = [e for e in events if e.type == "tool_end"]
+    assert len(ends) == 1 and ends[0].data["is_error"] is True
     assert session.messages == []

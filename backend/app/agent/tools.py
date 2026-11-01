@@ -19,7 +19,7 @@ from . import stats_parse
 from .fields import check_fields
 from .masking import mask_sensitive
 from .stream_metrics import StreamPacket, compute_stream_metrics, select_rows
-from .tshark_run import ToolError, ToolTimeout, run_tshark, validate_filter
+from .tshark_run import ToolError, ToolTimeout, run_tshark, run_tshark_bounded, validate_filter
 
 logger = logging.getLogger("pcapanalyzer.agent")
 
@@ -115,13 +115,18 @@ def filter_packets(
         args += ["-e", name]
     # tshark's -c counts packets read, not matched, so paging happens here on a
     # size-bounded output: the last line may be cut and is dropped.
-    out = run_tshark(args)
+    out, cut = run_tshark_bounded(args)
     lines = out.split("\n")
-    cut = len(out.encode("utf-8")) >= config.TOOL_MAX_OUTPUT_BYTES * 4
     if cut and lines:
-        lines = lines[:-1]
+        lines = lines[:-1]  # the last line may be incomplete
     lines = [ln for ln in lines if ln != ""]
     page = lines[offset: offset + limit]
+    if cut and offset >= len(lines):
+        return _error(
+            "window_exceeded",
+            message="The matching packets exceed the output window; narrow the filter instead of paging further.",
+            matched_at_least=len(lines),
+        )
     rows = []
     for line in page:
         parts = line.split("\t")
@@ -249,16 +254,21 @@ def stream_detail(ctx: ToolContext, stream_id: int, protocol: str = "tcp") -> To
     for name in names:
         args += ["-e", name]
     try:
-        out = run_tshark(args)
+        out, partial = run_tshark_bounded(args, max_bytes=config.TOOL_STREAM_MAX_BYTES)
     except ToolTimeout:
         raise  # execute_tool reports timeouts distinctly
     except ToolError as exc:
         return _error("tool_failed", message=str(exc))
+    lines = out.splitlines()
+    if partial and lines:
+        lines = lines[:-1]  # drop the cut line; metrics are flagged partial below
     packets: List[StreamPacket] = []
-    for line in out.splitlines():
+    for line in lines:
         if not line.strip():
             continue
         v = dict(zip(names, line.split("\t")))
+        if "frame.time_relative" not in v:
+            continue
         flag_str = v.get("tcp.flags.str", "")
         packets.append(StreamPacket(
             frame=int(v["frame.number"]),
@@ -291,8 +301,9 @@ def stream_detail(ctx: ToolContext, stream_id: int, protocol: str = "tcp") -> To
                 for p in rows
             ],
             "rows_truncated": truncated,
+            "metrics_partial": partial,
         },
-        truncated=truncated,
+        truncated=truncated or partial,
     )
 
 

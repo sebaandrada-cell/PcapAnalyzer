@@ -95,7 +95,7 @@ def _events(resp):
 def test_chat_streams_events_from_runner(client, sample_pcap, monkeypatch):
     sid = _analyze(client, sample_pcap).json()["session"]["id"]
 
-    def fake_run_turn(session, text, lang, tshark_path, emit, client=None):
+    def fake_run_turn(session, text, lang, tshark_path, emit, client=None, cancel=None):
         emit(runner.TurnEvent("tool_start", {"name": "capture_overview", "label": "capture_overview"}))
         emit(runner.TurnEvent("tool_end", {"name": "capture_overview", "ms": 3, "is_error": False, "truncated": False}))
         emit(runner.TurnEvent("text", {"delta": "Veredicto [[pkt: 1]]"}))
@@ -147,7 +147,7 @@ def test_chat_charges_daily_budget_and_reports_503_without_key(client, sample_pc
     guards.llm_budget._global = 0
     calls = []
 
-    def fake(session, text, lang, tshark_path, emit, client=None):
+    def fake(session, text, lang, tshark_path, emit, client=None, cancel=None):
         calls.append(text)
         emit(runner.TurnEvent("done", {"stop_reason": "end_turn", "limited": False}))
         return runner.TurnResult("", "end_turn", False, {})
@@ -162,10 +162,54 @@ def test_chat_error_event_when_pcap_vanishes_mid_turn(client, sample_pcap, monke
     sid = _analyze(client, sample_pcap).json()["session"]["id"]
     monkeypatch.setattr(agent_router, "ai_available", lambda: True)
 
-    def fake(session, text, lang, tshark_path, emit, client=None):
+    def fake(session, text, lang, tshark_path, emit, client=None, cancel=None):
         emit(runner.TurnEvent("text", {"delta": "a"}))
         raise FileNotFoundError("pcap gone")
 
     monkeypatch.setattr(agent_router, "run_turn", fake)
     ev = _events(client.post("/sessions/%s/chat" % sid, json={"message": "hola"}))
     assert ev[-1] == ("error", {"code": "internal", "message": "La investigación falló; inténtalo de nuevo."})
+
+
+def test_session_gone_maps_to_session_expired_event(client, sample_pcap, monkeypatch):
+    """I5: the client is told to re-analyze, not to retry."""
+    sid = _analyze(client, sample_pcap).json()["session"]["id"]
+    monkeypatch.setattr(agent_router, "ai_available", lambda: True)
+
+    def fake(session, text, lang, tshark_path, emit, client=None, cancel=None):
+        raise runner.SessionGoneError("gone")
+
+    monkeypatch.setattr(agent_router, "run_turn", fake)
+    ev = _events(client.post("/sessions/%s/chat" % sid, json={"message": "hola"}))
+    assert ev[-1] == ("error", {"code": "session_expired",
+                                "message": "La captura ya no está disponible; vuelve a analizarla."})
+
+
+def test_worker_owns_lock_and_slot_until_the_turn_ends(client, sample_pcap, monkeypatch):
+    """C2: closing the SSE generator without consuming it cancels the turn; the worker releases
+    the session lock and the worker slot itself, never the generator."""
+    import threading
+    import time as _time
+
+    from app.sessions import session_store
+
+    sid = _analyze(client, sample_pcap).json()["session"]["id"]
+    session = session_store.peek(sid, PRINCIPAL)
+    started = threading.Event()
+
+    def fake(session_, text, lang, tshark_path, emit, client=None, cancel=None):
+        started.set()
+        cancel.wait(5)
+        raise runner.TurnCancelled()
+
+    monkeypatch.setattr(agent_router, "run_turn", fake)
+    assert session.lock.acquire(blocking=False)
+    session.lock.release()
+    stream = agent_router._start_turn(session, agent_router.ChatRequest(message="hola", lang="es"), "/usr/bin/tshark")
+    assert started.wait(5) and session.lock.locked()
+    stream.close()  # client disconnected before reading anything
+    for _ in range(50):
+        if not session.lock.locked():
+            break
+        _time.sleep(0.1)
+    assert not session.lock.locked() and agent_router._workers._value == config.AGENT_WORKERS

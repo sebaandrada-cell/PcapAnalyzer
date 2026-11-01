@@ -73,6 +73,11 @@ AGENT_EFFORT = os.environ.get("AGENT_EFFORT", "high").strip().lower()
 if AGENT_EFFORT not in {"low", "medium", "high", "xhigh", "max"}:
     raise ValueError("AGENT_EFFORT must be one of low, medium, high, xhigh, max.")
 AGENT_COMPACT_TOKENS = _int_env("AGENT_COMPACT_TOKENS", 150_000)
+# stream_detail parses the whole flow (metrics must cover it); this bounds RAM, not rows.
+TOOL_STREAM_MAX_BYTES = _int_env("TOOL_STREAM_MAX_BYTES", 64 * 1024 * 1024)
+AGENT_PARALLEL_TOOLS = _int_env("AGENT_PARALLEL_TOOLS", 4)
+if AGENT_TASK_BUDGET_TOKENS < 20_000:
+    raise ValueError("AGENT_TASK_BUDGET_TOKENS must be at least 20000 (API minimum).")
 # Interactive API docs expose the full schema to scanners; off unless asked.
 DOCS_ENABLED = os.environ.get("DOCS_ENABLED", "").lower() in ("1", "true", "yes")
 

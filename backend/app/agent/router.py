@@ -26,7 +26,7 @@ from ..sessions import Session, session_store
 from ..tshark import find_tshark, install_instructions
 from .demo import DEMO_CHAT_REPLY, demo_investigation
 from .prompts import INVESTIGATE_SENTINEL
-from .runner import AgentLimitError, TurnEvent, run_turn
+from .runner import AgentLimitError, SessionGoneError, TurnCancelled, TurnEvent, run_turn
 
 logger = logging.getLogger("pcapanalyzer.agent")
 router = APIRouter()
@@ -108,11 +108,15 @@ class ChatRequest(BaseModel):
     lang: Literal["es", "en"] = "es"
 
 
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
 def _sse(event: str, data: dict) -> str:
     return "event: %s\ndata: %s\n\n" % (event, json.dumps(data, ensure_ascii=False))
 
 
 _GENERIC_ERROR = "La investigación falló; inténtalo de nuevo."
+_SESSION_GONE = "La captura ya no está disponible; vuelve a analizarla."
 
 
 def _demo_stream(session: Session, request: ChatRequest) -> Iterator[str]:
@@ -130,13 +134,54 @@ def _demo_stream(session: Session, request: ChatRequest) -> Iterator[str]:
         session.lock.release()
 
 
-def _agent_stream(session: Session, request: ChatRequest, tshark_path: str) -> Iterator[str]:
-    events: "queue.Queue[object]" = queue.Queue()
-    finished = object()
+class _TurnStream:
+    """Iterable of SSE frames for one turn.
+
+    The worker thread owns the session lock and the worker slot and releases
+    them itself when the turn ends. Closing (or dropping) this stream only sets
+    the cancel flag: the turn stops at its next event and is not persisted.
+    """
+
+    def __init__(self) -> None:
+        self.events: "queue.Queue[object]" = queue.Queue()
+        self.finished = object()
+        self.cancel = threading.Event()
+
+    def __iter__(self) -> Iterator[str]:
+        try:
+            while True:
+                item = self.events.get()
+                if item is self.finished:
+                    break
+                assert isinstance(item, TurnEvent)
+                yield _sse(item.type, item.data)
+        finally:
+            self.cancel.set()
+
+    def close(self) -> None:
+        self.cancel.set()
+
+    def __del__(self) -> None:  # the client went away without consuming the stream
+        self.cancel.set()
+
+
+def _start_turn(session: Session, request: ChatRequest, tshark_path: str) -> _TurnStream:
+    """Acquire the session lock and a worker slot, hand them to the worker thread."""
+    if not session.lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
+    if not _workers.acquire(blocking=False):
+        session.lock.release()
+        raise HTTPException(status_code=429, detail="Hay demasiadas investigaciones en curso; inténtalo en un momento.")
+    stream = _TurnStream()
+    events, finished, cancel = stream.events, stream.finished, stream.cancel
 
     def worker() -> None:
         try:
-            run_turn(session, request.message, request.lang, tshark_path, events.put)
+            run_turn(session, request.message, request.lang, tshark_path, events.put, cancel=cancel)
+        except TurnCancelled:
+            pass
+        except SessionGoneError:
+            events.put(TurnEvent("error", {"code": "session_expired", "message": _SESSION_GONE}))
         except AgentLimitError as exc:
             events.put(TurnEvent("error", {"code": "session_tokens", "message": str(exc)}))
         except (AIServiceError, AIUnavailableError) as exc:
@@ -145,21 +190,12 @@ def _agent_stream(session: Session, request: ChatRequest, tshark_path: str) -> I
             logger.exception("Investigation turn failed")
             events.put(TurnEvent("error", {"code": "internal", "message": _GENERIC_ERROR}))
         finally:
+            _workers.release()
+            session.lock.release()
             events.put(finished)
 
-    thread = threading.Thread(target=worker, name="agent-turn", daemon=True)
-    thread.start()
-    try:
-        while True:
-            item = events.get()
-            if item is finished:
-                break
-            assert isinstance(item, TurnEvent)
-            yield _sse(item.type, item.data)
-    finally:
-        thread.join(timeout=1)
-        _workers.release()
-        session.lock.release()
+    threading.Thread(target=worker, name="agent-turn", daemon=True).start()
+    return stream
 
 
 @router.post("/sessions/{session_id}/chat")
@@ -173,20 +209,16 @@ def session_chat(
         raise _not_found()
     if request.message == INVESTIGATE_SENTINEL and session.messages:
         raise HTTPException(status_code=409, detail="La investigación inicial ya se hizo en esta sesión.")
-    if not session.lock.acquire(blocking=False):
+    if session.lock.locked():
         raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
-    try:
-        if config.LLM_DEMO:
-            return StreamingResponse(_demo_stream(session, request), media_type="text/event-stream")
-        if not ai_available():
-            raise HTTPException(status_code=503, detail=availability()["hint"])
-        tshark_path = find_tshark()
-        if tshark_path is None:
-            raise HTTPException(status_code=503, detail=install_instructions())
-        llm_budget.consume(principal.tenant_id)  # one question = one paid call for the daily caps
-        if not _workers.acquire(blocking=False):
-            raise HTTPException(status_code=429, detail="Hay demasiadas investigaciones en curso; inténtalo en un momento.")
-    except Exception:
-        session.lock.release()
-        raise
-    return StreamingResponse(_agent_stream(session, request, tshark_path), media_type="text/event-stream")
+    if config.LLM_DEMO:
+        if not session.lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
+        return StreamingResponse(_demo_stream(session, request), media_type="text/event-stream", headers=_SSE_HEADERS)
+    if not ai_available():
+        raise HTTPException(status_code=503, detail=availability()["hint"])
+    tshark_path = find_tshark()
+    if tshark_path is None:
+        raise HTTPException(status_code=503, detail=install_instructions())
+    llm_budget.consume(principal.tenant_id)  # one question = one paid call for the daily caps
+    return StreamingResponse(_start_turn(session, request, tshark_path), media_type="text/event-stream", headers=_SSE_HEADERS)

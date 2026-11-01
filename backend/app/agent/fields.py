@@ -19,7 +19,7 @@ ALLOWED_PREFIXES: Tuple[str, ...] = (
 
 # Prefix match: "data" also covers "data.data", "imf." covers every imf field.
 CONTENT_FIELDS: Tuple[str, ...] = (
-    "data", "tcp.payload", "udp.payload", "http.file_data", "http.request.line",
+    "data", "tcp.payload", "tcp.segment_data", "tcp.reassembled.data", "tls.segment", "udp.payload", "http.file_data", "http.request.line",
     "http.response.line", "http.cookie", "http.authorization", "dns.txt", "smb",
     "smb2", "sip.msg_body", "ftp.request.arg", "imf.", "mime_multipart.",
 )

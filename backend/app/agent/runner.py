@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _TASK_BUDGET_BETA = "task-budgets-2026-03-13"
 _COMPACT_BETA = "compact-2026-01-12"
 _MAX_TOKENS = 16000
-_MAX_PARALLEL_TOOLS = 4
+_CACHE = {"type": "ephemeral"}
 
 
 @dataclass
@@ -43,6 +44,14 @@ class TurnResult:
 
 class AgentLimitError(RuntimeError):
     """The session already spent its token allowance."""
+
+
+class TurnCancelled(RuntimeError):
+    """The client went away; the turn stops at the next event and is not persisted."""
+
+
+class SessionGoneError(RuntimeError):
+    """The capture vanished (expired or deleted) while the turn was running."""
 
 
 def _block_to_dict(block: Any) -> Dict[str, Any]:
@@ -79,7 +88,14 @@ def _run_tools(
     results: List[dict] = []
     for block in tool_uses:
         emit(TurnEvent("tool_start", {"name": block.name, "label": _label(block.name, dict(block.input))}))
-    with session_store.decrypted_pcap(session) as pcap_path:
+    try:
+        pcap_cm = session_store.decrypted_pcap(session)
+        pcap_path = pcap_cm.__enter__()
+    except (OSError, ValueError) as exc:
+        for block in tool_uses:
+            emit(TurnEvent("tool_end", {"name": block.name, "ms": 0, "is_error": True, "truncated": False}))
+        raise SessionGoneError("La captura ya no está disponible.") from exc
+    try:
         ctx = ToolContext(session=session, pcap_path=pcap_path, tshark_path=tshark_path)
 
         def one(block: Any):
@@ -87,13 +103,41 @@ def _run_tools(
             result = execute_tool(ctx, block.name, dict(block.input))
             return block, result, int((time.monotonic() - started) * 1000)
 
-        with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_TOOLS, len(tool_uses))) as pool:
+        workers = max(1, min(config.AGENT_PARALLEL_TOOLS, len(tool_uses)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
             for block, result, ms in pool.map(one, tool_uses):
                 emit(TurnEvent("tool_end", {
                     "name": block.name, "ms": ms, "is_error": result.is_error, "truncated": result.truncated,
                 }))
                 results.append(tool_result_block(block.id, result))
+    finally:
+        pcap_cm.__exit__(None, None, None)
     return results
+
+
+def _with_cache_breakpoint(history: List[dict]) -> List[dict]:
+    """Copy of the history whose last *user* message ends with a cache breakpoint.
+
+    The persisted history never carries cache_control; it is added per call so
+    the growing prefix (system, tools, every earlier turn) is served from cache.
+    """
+    messages = list(history)
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].get("role") != "user":
+            continue
+        message = dict(messages[index])
+        content = message["content"]
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+        else:
+            content = list(content)
+        if content:
+            content[-1] = dict(content[-1])
+            content[-1]["cache_control"] = _CACHE
+        message["content"] = content
+        messages[index] = message
+        break
+    return messages
 
 
 def _budget_exhausted_results(tool_uses: List[Any]) -> List[dict]:
@@ -132,7 +176,15 @@ def run_turn(
     tshark_path: str,
     emit: Callable[[TurnEvent], None],
     client: Any = None,
+    cancel: Optional[threading.Event] = None,
 ) -> TurnResult:
+    raw_emit = emit
+
+    def emit(event: TurnEvent) -> None:  # cooperative cancellation at every event
+        if cancel is not None and cancel.is_set():
+            raise TurnCancelled()
+        raw_emit(event)
+
     spent = session.usage.input_tokens + session.usage.output_tokens
     if spent >= config.SESSION_MAX_TOKENS:
         raise AgentLimitError("Esta sesión alcanzó su límite de tokens (%d)." % config.SESSION_MAX_TOKENS)
@@ -143,27 +195,34 @@ def run_turn(
 
     text = investigate_request(lang) if user_text == INVESTIGATE_SENTINEL else user_text
     history: List[dict] = list(session.messages) + [{"role": "user", "content": text}]
-    system = [{"type": "text", "text": agent_system(lang), "cache_control": {"type": "ephemeral"}}]
+    system = [{"type": "text", "text": agent_system(lang), "cache_control": _CACHE}]
     tools = copy.deepcopy(TOOL_DEFINITIONS)
-    tools[-1]["cache_control"] = {"type": "ephemeral"}
+    tools[-1]["cache_control"] = _CACHE
 
     totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     tool_calls = 0
     model_calls = 0
     limited = False
+    note_added = False
     continued = False
     final_text = ""
     stop_reason = "end_turn"
 
     while True:
-        if limited:
+        if cancel is not None and cancel.is_set():
+            raise TurnCancelled()
+        if limited and not note_added:
             history.append({"role": "system", "content": limit_reached_note(lang)})
+            note_added = True
+        # The tool set never changes mid-conversation (API requirement when the
+        # history holds tool blocks, and the cached prefix starts with it);
+        # the closing call just forbids further calls.
         kwargs: Dict[str, Any] = {
             "model": config.LLM_MODEL,
             "max_tokens": _MAX_TOKENS,
             "system": system,
-            "tools": [] if limited else tools,
-            "messages": list(history),  # snapshot: the list keeps growing after the call
+            "tools": tools,
+            "messages": _with_cache_breakpoint(history),
             "thinking": {"type": "adaptive"},
             "output_config": {
                 "effort": config.AGENT_EFFORT,
@@ -172,6 +231,8 @@ def run_turn(
             "betas": [_FALLBACK_BETA, _TASK_BUDGET_BETA],
             "fallbacks": "default",
         }
+        if limited:
+            kwargs["tool_choice"] = {"type": "none"}
         if _estimate_tokens(history) > config.AGENT_COMPACT_TOKENS:
             kwargs["context_management"] = {"edits": [{"type": "compact_20260112"}]}
             kwargs["betas"] = kwargs["betas"] + [_COMPACT_BETA]

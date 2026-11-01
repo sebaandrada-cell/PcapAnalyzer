@@ -102,3 +102,16 @@ def test_session_info_shape(store, tmp_path):
     info = session_info(s)
     assert info.id == s.id and info.ttl_minutes == 60 and info.content_allowed is False
     assert abs(info.expires_at - (s.last_used_at + 3600)) < 1
+
+
+def test_eviction_prefers_sessions_without_a_turn_in_flight(store, tmp_path, monkeypatch):
+    """I5: a running investigation is not the first victim of the session cap."""
+    monkeypatch.setattr(config, "MAX_SESSIONS", 2)
+    a = store.create("tok", _pcap(tmp_path, name="1.pcap"), "1", make_analysis())
+    b = store.create("tok", _pcap(tmp_path, name="2.pcap"), "2", make_analysis())
+    assert a.lock.acquire(blocking=False)
+    try:
+        c = store.create("tok", _pcap(tmp_path, name="3.pcap"), "3", make_analysis())
+    finally:
+        a.lock.release()
+    assert store.peek(a.id, "tok") is a and store.peek(b.id, "tok") is None and store.peek(c.id, "tok") is c

@@ -312,3 +312,30 @@ def test_execute_tool_timeout_is_reported_not_raised(ctx, monkeypatch):
 
     monkeypatch.setattr("app.agent.tools.run_tshark", boom)
     assert execute_tool(ctx, "statistics", {"kind": "expert"}).content["error"] == "timeout"
+
+
+# ---- final-review fixes ------------------------------------------------------------
+def test_run_tshark_bounds_output_without_buffering_everything(monkeypatch):
+    """I2: an endless producer is cut at max_bytes and killed; the call returns promptly."""
+    from app.agent.tshark_run import run_tshark_bounded
+
+    monkeypatch.setattr("app.agent.tshark_run.find_tshark", lambda: "/usr/bin/yes")
+    text, truncated = run_tshark_bounded(["x"], timeout_s=5, max_bytes=1000)
+    assert truncated is True and len(text.encode()) <= 1000 and text.startswith("x\n")
+
+
+@needs_tshark
+def test_stream_detail_metrics_are_not_bound_by_tool_output_cap(ctx, monkeypatch):
+    """I3: metrics cover the whole flow even when the generic output cap is tiny."""
+    monkeypatch.setattr(config, "TOOL_MAX_OUTPUT_BYTES", 200)
+    r = stream_detail(ctx, 0)
+    assert not r.is_error and r.content["metrics"]["packets"] == 9
+    assert r.content["metrics_partial"] is False
+
+
+def test_tcp_payload_aliases_require_content_switch():
+    """I4: reassembled/segment data is payload too."""
+    assert check_fields(["tcp.segment_data", "tcp.reassembled.data", "tls.segment.data"], False) == [
+        "tcp.segment_data", "tcp.reassembled.data", "tls.segment.data",
+    ]
+    assert check_fields(["tcp.segment_data"], True) == []

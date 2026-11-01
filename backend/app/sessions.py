@@ -217,7 +217,8 @@ class SessionStore:
             victims = [s for sid, s in self._sessions.items() if sid != keep]
             if not victims:
                 return removed
-            oldest = min(victims, key=lambda s: s.last_used_at)
+            idle = [s for s in victims if not s.lock.locked()]  # never kill a running turn first
+            oldest = min(idle or victims, key=lambda s: s.last_used_at)
             self._drop_locked(oldest.id)
             removed += 1
 
