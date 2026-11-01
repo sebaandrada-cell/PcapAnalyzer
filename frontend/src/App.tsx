@@ -27,6 +27,10 @@ import SupabaseAuthGate from './components/SupabaseAuthGate'
 import { loadDemo, useDemoRoute, type DemoData } from './demo'
 import { useSettings } from './settings'
 import { isSupabaseConfigured } from './supabase'
+import CookieNotice from './components/CookieNotice'
+import CookiePolicy from './components/CookiePolicy'
+import SiteFooter from './components/SiteFooter'
+import { useCookiesRoute } from './policyRoute'
 
 // `demo` is only passed by the public demo: the dashboard starts with the
 // pre-computed sample analysis and nothing talks to the backend.
@@ -234,7 +238,7 @@ function DemoView() {
   )
 }
 
-export default function App() {
+function Routes() {
   const demoRoute = useDemoRoute()
   if (!isSupabaseConfigured) return <Dashboard />
   // The demo only exists in the hosted build (Supabase configured): the
@@ -244,5 +248,23 @@ export default function App() {
     <SupabaseAuthGate>
       <Dashboard />
     </SupabaseAuthGate>
+  )
+}
+
+export default function App() {
+  const cookiesRoute = useCookiesRoute()
+  return (
+    <>
+      {cookiesRoute ? (
+        <>
+          <SettingsBar />
+          <CookiePolicy />
+        </>
+      ) : (
+        <Routes />
+      )}
+      <SiteFooter />
+      <CookieNotice />
+    </>
   )
 }

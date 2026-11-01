@@ -262,6 +262,22 @@
   footer { border-top: 1px solid var(--border); color: var(--muted); }
   footer .wrap { padding: 34px 24px; display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; font-size: 13px; }
   footer .brand { color: var(--ink-2); }
+  footer a { color: var(--ink-2); text-decoration: underline; }
+  footer .wrap > span:last-child { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .cookies-sec { border-top: 1px solid var(--border); }
+  .cookies-sec h2 { font-size: 22px; margin: 0 0 12px; }
+  .cookies-sec h3 { font-size: 15px; margin: 22px 0 6px; }
+  .cookies-sec p { font-size: 14.5px; color: var(--ink-2); margin: 0 0 10px; max-width: 760px; }
+  .cookies-sec .tbl { overflow-x: auto; }
+  .cookies-sec table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .cookies-sec th, .cookies-sec td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--ink-2); }
+  .cookies-sec th { color: var(--ink); }
+  .cookies-sec code { font-family: var(--mono); font-size: .92em; }
+  .notice { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 50; max-width: 560px; margin: 0 auto; display: flex; align-items: center; gap: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: var(--shadow); }
+  .notice[hidden] { display: none; }
+  .notice p { margin: 0; flex: 1; }
+  .notice a { color: var(--accent); }
+  .notice button { flex: none; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
 
   :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; border-radius: 4px; }
 
@@ -443,12 +459,41 @@
   </div>
 </section>
 
+<section class="cookies-sec band" id="cookies">
+  <div class="wrap">
+    <h2 data-k="ck.h2">Política de cookies y almacenamiento</h2>
+    <p data-k="ck.intro">Esta web no usa cookies de analítica, publicidad ni de terceros, y no hace seguimiento. Solo guarda en tu navegador un dato técnico (localStorage) para recordar tu idioma.</p>
+    <h3 data-k="ck.h3a">Qué se guarda</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th scope="col" data-k="ck.thKey">Clave</th><th scope="col" data-k="ck.thPurpose">Finalidad</th><th scope="col" data-k="ck.thDur">Duración</th></tr></thead>
+        <tbody>
+          <tr><td><code>pa_lang</code></td><td data-k="ck.lang">Idioma elegido (es/en).</td><td data-k="ck.dur">Hasta que la borres</td></tr>
+          <tr><td><code>pa_notice</code></td><td data-k="ck.notice">Recuerda que ya has cerrado el aviso de almacenamiento.</td><td data-k="ck.dur2">Hasta que la borres</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p data-k="ck.app">La aplicación web (pcap-analyzer) guarda además el tema, el coloreado de paquetes y, si inicias sesión, tu sesión; el detalle está en su propia política de cookies.</p>
+    <h3 data-k="ck.h3b">Base legal</h3>
+    <p data-k="ck.legal">Es almacenamiento estrictamente necesario para prestar el servicio que solicitas (preferencia de idioma), por lo que, conforme al art. 22.2 de la LSSI, no requiere tu consentimiento y por eso no hay banner de consentimiento. Si en el futuro se añadiera analítica u otros servicios de terceros, se pediría tu consentimiento previo.</p>
+    <h3 data-k="ck.h3c">Cómo borrarlo</h3>
+    <p data-k="ck.del">Desde los ajustes de tu navegador (borrar datos del sitio) o con las herramientas de desarrollo (Aplicación, Almacenamiento local). Si lo borras, la web vuelve al idioma del navegador.</p>
+    <h3 data-k="ck.h3d">Contacto</h3>
+    <p data-k="ck.contact">Responsable: Noviembrepunk. Contacto: mediante el formulario de contacto de la web, que se está preparando.</p>
+  </div>
+</section>
+
 <footer>
   <div class="wrap">
     <span class="brand"><span class="dot"></span>PcapAnalyzer</span>
-    <span data-k="footer.tag">Analizador de capturas de red · self-hosted · licencia personal</span>
+    <span><span data-k="footer.tag">Analizador de capturas de red · self-hosted · licencia personal</span><a href="#cookies" data-k="footer.cookies">Cookies</a></span>
   </div>
 </footer>
+
+<aside class="notice" id="notice" role="region" aria-label="Aviso de almacenamiento" hidden>
+  <p><span data-k="ck.nText">Solo usamos almacenamiento local técnico (idioma). Sin analítica ni terceros.</span> <a href="#cookies" data-k="ck.nMore">Más información</a></p>
+  <button type="button" id="notice-ok" data-k="ck.nOk">Entendido</button>
+</aside>
 
 <script>
   /* ─────────────────────────────────────────────────────────────
@@ -569,7 +614,27 @@
       "faq.q4": "Do I get updates?",
       "faq.a4": "The download includes the full source, so it is yours to run and adapt. Future improvements are published as new versions.",
 
-      "footer.tag": "Network capture analyzer · self-hosted · personal license"
+      "footer.tag": "Network capture analyzer · self-hosted · personal license",
+      "footer.cookies": "Cookies",
+      "ck.label": "Storage notice",
+      "ck.h2": "Cookies and storage policy",
+      "ck.intro": "This site uses no analytics, advertising or third-party cookies and does no tracking. It only stores one technical item in your browser (localStorage) to remember your language.",
+      "ck.h3a": "What is stored",
+      "ck.thKey": "Key", "ck.thPurpose": "Purpose", "ck.thDur": "Duration",
+      "ck.lang": "Chosen language (es/en).",
+      "ck.dur": "Until you delete it",
+      "ck.notice": "Remembers that you dismissed the storage notice.",
+      "ck.dur2": "Until you delete it",
+      "ck.app": "The web application (pcap-analyzer) also stores the theme, packet coloring and, if you sign in, your session; details are in its own cookies policy.",
+      "ck.h3b": "Legal basis",
+      "ck.legal": "This is storage strictly necessary to provide the service you request (language preference), so under art. 22.2 of the Spanish LSSI it does not require your consent, which is why there is no consent banner. If analytics or other third-party services were added in the future, your prior consent would be requested.",
+      "ck.h3c": "How to delete it",
+      "ck.del": "From your browser settings (clear site data) or with the developer tools (Application, Local storage). If you delete it, the site goes back to your browser language.",
+      "ck.h3d": "Contact",
+      "ck.contact": "Owner: Noviembrepunk. Contact: through the website contact form, which is being set up.",
+      "ck.nText": "We only use technical local storage (language). No analytics or third parties.",
+      "ck.nMore": "More information",
+      "ck.nOk": "Got it"
     };
 
     var nodes = document.querySelectorAll("[data-k]");
@@ -583,6 +648,8 @@
         if (val != null) el.innerHTML = val;
       });
       document.documentElement.lang = lang;
+      var nb = document.getElementById("notice");
+      if (nb) nb.setAttribute("aria-label", lang === "en" ? EN["ck.label"] : "Aviso de almacenamiento");
       document.querySelectorAll(".langtog button").forEach(function (b) {
         b.classList.toggle("active", b.getAttribute("data-lang") === lang);
       });
@@ -601,6 +668,19 @@
     });
 
     apply(saved);
+  })();
+
+  /* Aviso informativo de una sola vez (no es consentimiento: solo almacenamiento técnico). */
+  (function () {
+    var box = document.getElementById("notice"), ok = document.getElementById("notice-ok");
+    if (!box || !ok) return;
+    var seen = false;
+    try { seen = localStorage.getItem("pa_notice") === "1"; } catch (e) {}
+    if (!seen) box.hidden = false;
+    ok.addEventListener("click", function () {
+      try { localStorage.setItem("pa_notice", "1"); } catch (e) {}
+      box.hidden = true;
+    });
   })();
 
   // Animate the hero sparkline drawing once on load (respects reduced-motion via CSS).
