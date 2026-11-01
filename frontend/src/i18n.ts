@@ -34,6 +34,8 @@ const es: Dict = {
     confirmEmail: 'Revisa tu correo para confirmar la cuenta antes de iniciar sesión.',
     failed: 'No se pudo completar la autenticación.',
     tryDemo: 'Ver una demo sin registrarme',
+    captchaRequired: 'Completa la verificación anti-bots e inténtalo de nuevo.',
+    captchaFailed: 'No se pudo cargar la verificación anti-bots. Recarga la página.',
   },
   demo: {
     banner:
@@ -463,6 +465,8 @@ const en: Dict = {
     confirmEmail: 'Check your email to confirm the account before signing in.',
     failed: 'Authentication could not be completed.',
     tryDemo: 'See a demo without signing up',
+    captchaRequired: 'Complete the anti-bot check and try again.',
+    captchaFailed: 'The anti-bot check could not be loaded. Reload the page.',
   },
   demo: {
     banner:
