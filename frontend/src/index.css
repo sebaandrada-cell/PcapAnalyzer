@@ -202,6 +202,22 @@ button.primary {
   background: transparent;
   color: var(--accent);
 }
+.auth-card .auth-google {
+  width: 100%;
+}
+.auth-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+.auth-sep::before,
+.auth-sep::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
 .auth-message {
   color: var(--ok-fg);
   font-size: 13px;
