@@ -137,16 +137,6 @@ async def throttle_and_cap_body(
         return await call_next(request)
     ip = client_ip(request)
     path = request.url.path
-    if os.getenv("DEBUG_CLIENT_IP_HEADERS") == "1" and path == "/health":
-        # Temporary, opt-in: only IP-related headers, never cookies or auth.
-        logging.getLogger("uvicorn.error").info(
-            "client-ip debug: xff=%r cf=%r real=%r peer=%r chosen=%r",
-            request.headers.get("x-forwarded-for"),
-            request.headers.get("cf-connecting-ip"),
-            request.headers.get("x-real-ip"),
-            request.client.host if request.client else None,
-            ip,
-        )
     try:
         ip_limiter.check("all:" + ip, config.IP_MAX_REQUESTS_PER_MINUTE)
         if path in {"/analyze", "/analyze/async"}:
