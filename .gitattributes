@@ -26,3 +26,6 @@ frontend/api  export-ignore
 
 # Marketing screenshots, not part of the product.
 marketing  export-ignore
+
+# Internal design docs (not part of the product)
+docs/superpowers export-ignore
