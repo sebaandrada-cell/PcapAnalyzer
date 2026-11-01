@@ -1224,3 +1224,173 @@ button.link {
   color: var(--status-critical);
   font-size: 13px;
 }
+
+/* ---- AI investigation panel ---- */
+.investigation {
+  background: var(--accent-wash);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin: 0 0 20px;
+}
+.investigation h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--accent);
+}
+.investigation .card-sub {
+  margin-bottom: 10px;
+}
+.session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+  background: var(--wash);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.session-bar .expired {
+  color: var(--status-critical);
+  font-weight: 600;
+}
+.session-bar .spacer {
+  flex: 1 1 auto;
+}
+.turn {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+.turn:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+.turn .question {
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.turn .question span {
+  color: var(--ink-muted);
+  font-weight: 400;
+  margin-right: 6px;
+}
+.steps {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  margin: 0 0 8px;
+}
+.steps summary {
+  cursor: pointer;
+}
+.steps ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.steps li.error {
+  color: var(--status-critical);
+}
+.steps li.running::after {
+  content: ' …';
+}
+.evidence-text h3 {
+  font-size: 15px;
+  margin: 14px 0 6px;
+}
+.evidence-text h4 {
+  font-size: 13px;
+  margin: 10px 0 4px;
+  color: var(--ink-secondary);
+}
+.evidence-text p {
+  margin: 0 0 8px;
+}
+.evidence-text ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.evidence-text li {
+  margin: 2px 0;
+}
+.evidence-text pre {
+  background: var(--wash);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.evidence-text code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--wash);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.evidence-btn {
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 8px;
+  margin: 0 2px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.evidence-btn.ghost {
+  border-color: var(--border);
+  color: var(--ink-secondary);
+}
+.turn-note {
+  font-size: 12px;
+  color: var(--warning-fg);
+  margin: 6px 0 0;
+}
+.turn-error {
+  font-size: 13px;
+  color: var(--status-critical);
+  margin: 6px 0 0;
+}
+.chat-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: flex-end;
+}
+.chat-input textarea {
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  max-height: 160px;
+  resize: vertical;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.blocked-note {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .chat-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .session-bar .spacer {
+    display: none;
+  }
+}
