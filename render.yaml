@@ -67,6 +67,9 @@ services:
       - key: API_MAX_JOBS_PER_TOKEN
         value: "1"
       # ── Abuse / cost guards (0 disables) ───────────────────────
+      # Cloudflare edge + Render proxy append to X-Forwarded-For (checked in logs).
+      - key: TRUSTED_PROXY_HOPS
+        value: "2"
       - key: IP_MAX_REQUESTS_PER_MINUTE
         value: "120"
       - key: IP_MAX_UPLOADS_PER_MINUTE
