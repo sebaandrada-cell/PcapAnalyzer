@@ -102,3 +102,83 @@ def test_filter_packets_rejects_content_fields_unless_allowed(ctx):
 def test_filter_packets_invalid_filter(ctx):
     r = filter_packets(ctx, "tcp.port ==== 80", ["frame.number"])
     assert r.is_error and r.content["error"] == "invalid_filter"
+
+
+# ---- statistics (tshark -z) ---------------------------------------------------
+from app.agent.stats_parse import (  # noqa: E402
+    parse_conversations, parse_endpoints, parse_expert, parse_io_stat, parse_protocol_hierarchy,
+)
+from app.agent.tools import STAT_KINDS, statistics  # noqa: E402
+
+
+def test_parse_conversations_from_tshark_text():
+    text = """================================================================================
+TCP Conversations
+Filter:<No Filter>
+                                                           |       <-      | |       ->      | |     Total     |    Relative    |   Duration   |
+                                                           | Frames  Bytes | | Frames  Bytes | | Frames  Bytes |      Start     |              |
+10.0.0.1:34567             <-> 10.0.0.2:80                      4 282 bytes       5 561 bytes       9 843 bytes     0.000000000         0.5500
+================================================================================
+"""
+    assert parse_conversations(text) == [{
+        "a": "10.0.0.1:34567", "b": "10.0.0.2:80", "frames_b_to_a": 4, "bytes_b_to_a": 282,
+        "frames_a_to_b": 5, "bytes_a_to_b": 561, "frames": 9, "bytes": 843,
+        "rel_start": 0.0, "duration": 0.55,
+    }]
+
+
+def test_parse_endpoints_converts_units():
+    text = """================================================================================
+IPv4 Endpoints
+Filter:<No Filter>
+                       | Packets | |  Bytes  | | Tx Packets | | Tx Bytes | | Rx Packets | | Rx Bytes |
+10.0.0.1                       53   14 kB              37      13 kB               16      1128 bytes  
+================================================================================
+"""
+    assert parse_endpoints(text) == [{
+        "address": "10.0.0.1", "packets": 53, "bytes": 14000, "tx_packets": 37, "tx_bytes": 13000,
+        "rx_packets": 16, "rx_bytes": 1128,
+    }]
+
+
+def test_parse_io_stat_and_hierarchy():
+    io = "| Interval | Frames | Bytes |\n|---------------------------|\n|  0 <> 2  |     11 |   951 |\n| 14 <> Dur|      2 |    84 |\n=============================\n"
+    assert parse_io_stat(io) == [{"interval_start": 0.0, "frames": 11, "bytes": 951},
+                                 {"interval_start": 14.0, "frames": 2, "bytes": 84}]
+    phs = "frame                                    frames:56 bytes:14790\n  eth                                    frames:56 bytes:14790\n    ip                                   frames:54 bytes:14706\n      tcp                                frames:26 bytes:6794\n    arp                                  frames:2 bytes:84\n"
+    rows = parse_protocol_hierarchy(phs)
+    assert rows[3] == {"protocol": "frame:eth:ip:tcp", "frames": 26, "bytes": 6794}
+    assert rows[4]["protocol"] == "frame:eth:arp"
+
+
+def test_parse_expert_groups_by_severity():
+    text = ("\nWarns (3)\n=============\n   Frequency      Group           Protocol  Summary\n"
+            "           1   Sequence                TCP  TCP Zero Window segment\n"
+            "           1   Sequence                TCP  Connection reset (RST)\n\n"
+            "Notes (1)\n=============\n   Frequency      Group           Protocol  Summary\n"
+            "           5   Sequence                TCP  This frame is a (suspected) retransmission\n")
+    rows = parse_expert(text)
+    assert rows[0] == {"severity": "warning", "frequency": 1, "group": "Sequence",
+                       "protocol": "TCP", "summary": "TCP Zero Window segment"}
+    assert rows[-1]["severity"] == "note" and rows[-1]["frequency"] == 5
+
+
+@needs_tshark
+def test_statistics_kinds_on_sample(ctx):
+    conv = statistics(ctx, "conversations_tcp")
+    assert not conv.is_error
+    assert any("10.0.0.2:80" in (r["a"], r["b"]) for r in conv.content["rows"])
+    io = statistics(ctx, "io_per_interval", interval_s=2)
+    assert len(io.content["rows"]) >= 7 and sum(r["frames"] for r in io.content["rows"]) == 56
+    assert statistics(ctx, "expert").content["rows"]
+    assert statistics(ctx, "protocol_hierarchy").content["rows"]
+    assert statistics(ctx, "endpoints_ip").content["rows"][0]["address"]
+    assert statistics(ctx, "dns").content["rows"]["rcode"]["No such name"] == 3
+    srt = statistics(ctx, "service_response_time", protocol="icmp")
+    assert srt.content["kind"] == "service_response_time" and not srt.is_error
+    assert statistics(ctx, "service_response_time", protocol="dns").is_error
+    assert statistics(ctx, "nope").is_error and "kinds" in statistics(ctx, "nope").content
+    filtered = statistics(ctx, "conversations_tcp", display_filter="tcp.port == 80")
+    assert len(filtered.content["rows"]) == 1
+    assert statistics(ctx, "conversations_tcp", display_filter="tcp.port ==== 80").is_error
+    assert set(STAT_KINDS) >= {"conversations_tcp", "io_per_interval", "expert"}

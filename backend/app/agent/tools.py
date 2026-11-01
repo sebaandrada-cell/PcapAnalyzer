@@ -8,10 +8,11 @@ raised, so the model can react to them.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .. import config
 from ..sessions import Session
+from . import stats_parse
 from .fields import check_fields
 from .tshark_run import ToolError, run_tshark, validate_filter
 
@@ -131,4 +132,64 @@ def filter_packets(
             "has_more": len(lines) > offset + limit or cut,
         },
         truncated=cut,
+    )
+
+
+# ---- statistics --------------------------------------------------------------
+STAT_KINDS = (
+    "conversations_tcp", "conversations_udp", "conversations_ip", "endpoints_ip",
+    "io_per_interval", "protocol_hierarchy", "expert", "dns", "service_response_time",
+)
+SRT_PROTOCOLS = ("icmp", "icmpv6", "smb", "smb2", "ldap", "rpc", "dcerpc", "snmp", "kerberos")
+_STAT_ARGS = {
+    "conversations_tcp": ("conv,tcp", stats_parse.parse_conversations),
+    "conversations_udp": ("conv,udp", stats_parse.parse_conversations),
+    "conversations_ip": ("conv,ip", stats_parse.parse_conversations),
+    "endpoints_ip": ("endpoints,ip", stats_parse.parse_endpoints),
+    "protocol_hierarchy": ("io,phs", stats_parse.parse_protocol_hierarchy),
+    "expert": ("expert", stats_parse.parse_expert),
+    "dns": ("dns,tree", stats_parse.parse_dns_tree),
+}
+
+
+def statistics(
+    ctx: ToolContext,
+    kind: str,
+    display_filter: Optional[str] = None,
+    interval_s: int = 1,
+    protocol: Optional[str] = None,
+) -> ToolResult:
+    """Aggregates from ``tshark -z``: where is the traffic and where are the symptoms."""
+    if kind not in STAT_KINDS:
+        return _error("unknown_kind", kinds=list(STAT_KINDS))
+    if display_filter:
+        try:
+            validate_filter(ctx.pcap_path, display_filter)
+        except ToolError as exc:
+            return _error("invalid_filter", message=str(exc))
+    if kind == "io_per_interval":
+        interval = max(1, min(int(interval_s), 3600))
+        spec = "io,stat,%d" % interval + (",%s" % display_filter if display_filter else "")
+        parser = stats_parse.parse_io_stat
+    elif kind == "service_response_time":
+        if protocol not in SRT_PROTOCOLS:
+            return _error("unsupported_protocol", protocols=list(SRT_PROTOCOLS),
+                          hint="DNS and HTTP response times are in capture_overview.service_response_times.")
+        spec = "%s,srt" % protocol + (",%s" % display_filter if display_filter else "")
+        parser = stats_parse.parse_srt
+    else:
+        base, parser = _STAT_ARGS[kind]
+        spec = base + (",%s" % display_filter if display_filter else "")
+    try:
+        text = run_tshark(["-r", ctx.pcap_path, "-q", "-z", spec])
+    except ToolError as exc:
+        return _error("tool_failed", message=str(exc))
+    rows = parser(text)
+    truncated = isinstance(rows, list) and len(rows) > config.TOOL_MAX_ROWS
+    if truncated:
+        rows = rows[: config.TOOL_MAX_ROWS]
+    return ToolResult(
+        content={"kind": kind, "filter": display_filter, "rows": rows,
+                 "returned": len(rows), "truncated": truncated},
+        truncated=truncated,
     )
