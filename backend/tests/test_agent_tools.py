@@ -49,3 +49,56 @@ def test_run_tshark_timeout(sample_pcap, monkeypatch):
     monkeypatch.setattr("app.agent.tshark_run.find_tshark", lambda: "/bin/sleep")
     with pytest.raises(ToolTimeout):
         run_tshark(["5"], timeout_s=1)
+
+
+# ---- tools over the sample capture ------------------------------------------
+from app.agent.tools import ToolContext, capture_overview, filter_packets  # noqa: E402
+from app.analysis import analyze_pcap  # noqa: E402
+from app.sessions import SessionStore  # noqa: E402
+
+
+@pytest.fixture
+def ctx(sample_pcap, tmp_path):
+    tshark = find_tshark()
+    analysis = analyze_pcap(
+        tshark_path=tshark, pcap_path=str(sample_pcap),
+        original_filename="sample.pcap", size_bytes=sample_pcap.stat().st_size,
+    )
+    store = SessionStore(directory=str(tmp_path / "s"))
+    session = store.create("tok", str(sample_pcap), "sample.pcap", analysis)
+    with store.decrypted_pcap(session) as path:
+        yield ToolContext(session=session, pcap_path=path, tshark_path=tshark)
+
+
+@needs_tshark
+def test_capture_overview_is_complete(ctx):
+    r = capture_overview(ctx)
+    assert not r.is_error and r.content["summary"]["packets"] == 56
+    assert len(r.content["issues"]) == 18
+    assert len(r.content["tcp_conversations"]) == len(ctx.session.analysis.conversations.tcp)
+    assert {"stream_id", "dup_acks", "rtt_avg_ms"} <= set(r.content["tcp_conversations"][0])
+
+
+@needs_tshark
+def test_filter_packets_rows_and_paging(ctx):
+    r = filter_packets(ctx, "tcp.flags.syn == 1 && tcp.flags.ack == 0",
+                       ["frame.number", "ip.dst", "tcp.dstport"], limit=2)
+    assert not r.is_error and r.content["returned"] == 2 and r.content["has_more"] is True
+    assert r.content["rows"][0]["frame"] == 1 and r.content["rows"][0]["tcp.dstport"] == "80"
+    r2 = filter_packets(ctx, "tcp.flags.syn == 1 && tcp.flags.ack == 0", ["frame.number"],
+                        limit=2, offset=2)
+    assert r2.content["rows"][0]["frame"] > 1 and r2.content["offset"] == 2
+
+
+@needs_tshark
+def test_filter_packets_rejects_content_fields_unless_allowed(ctx):
+    r = filter_packets(ctx, "tcp", ["tcp.payload"])
+    assert r.is_error and r.content["error"] == "fields_not_allowed"
+    ctx.session.content_allowed = True
+    assert not filter_packets(ctx, "tcp", ["tcp.payload"]).is_error
+
+
+@needs_tshark
+def test_filter_packets_invalid_filter(ctx):
+    r = filter_packets(ctx, "tcp.port ==== 80", ["frame.number"])
+    assert r.is_error and r.content["error"] == "invalid_filter"
