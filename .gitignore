@@ -17,3 +17,6 @@ release/
 
 # Supabase CLI local link state (project ref, pooler URL)
 supabase/.temp/
+
+# SDD scratch workspace (ledger, briefs)
+.superpowers/
