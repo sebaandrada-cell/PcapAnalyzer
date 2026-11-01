@@ -36,6 +36,15 @@ API_TOKENS: List[str] = [
 ]
 API_MAX_REQUESTS_PER_MINUTE = _int_env("API_MAX_REQUESTS_PER_MINUTE", 30)
 API_MAX_JOBS_PER_TOKEN = _int_env("API_MAX_JOBS_PER_TOKEN", 2)
+# Abuse/cost guards (0 disables a limit). The IP limit runs before auth so
+# unauthenticated floods and bots are throttled; the LLM caps are hard daily
+# ceilings on paid Anthropic calls, per principal and across the whole service.
+IP_MAX_REQUESTS_PER_MINUTE = _int_env("IP_MAX_REQUESTS_PER_MINUTE", 120)
+IP_MAX_UPLOADS_PER_MINUTE = _int_env("IP_MAX_UPLOADS_PER_MINUTE", 6)
+LLM_MAX_CALLS_PER_DAY = _int_env("LLM_MAX_CALLS_PER_DAY", 20)
+LLM_MAX_CALLS_PER_DAY_GLOBAL = _int_env("LLM_MAX_CALLS_PER_DAY_GLOBAL", 200)
+# Interactive API docs expose the full schema to scanners; off unless asked.
+DOCS_ENABLED = os.environ.get("DOCS_ENABLED", "").lower() in ("1", "true", "yes")
 
 # Shared SaaS infrastructure. Supabase mode is enabled explicitly and requires
 # Auth, Postgres, and a private Storage bucket.

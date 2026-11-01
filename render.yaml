@@ -66,3 +66,13 @@ services:
         value: "30"
       - key: API_MAX_JOBS_PER_TOKEN
         value: "1"
+      # ── Abuse / cost guards (0 disables) ───────────────────────
+      - key: IP_MAX_REQUESTS_PER_MINUTE
+        value: "120"
+      - key: IP_MAX_UPLOADS_PER_MINUTE
+        value: "6"
+      # Hard daily ceilings on paid Anthropic calls (per tenant / whole service).
+      - key: LLM_MAX_CALLS_PER_DAY
+        value: "20"
+      - key: LLM_MAX_CALLS_PER_DAY_GLOBAL
+        value: "200"

@@ -21,7 +21,7 @@ def get_client():
     try:
         import anthropic
 
-        candidate = anthropic.Anthropic(timeout=config.LLM_TIMEOUT_S)
+        candidate = anthropic.Anthropic(timeout=config.LLM_TIMEOUT_S, max_retries=1)
         # The SDK constructs fine without credentials and only fails at
         # request time — verify a credential source actually resolved.
         # Truthiness matters: an empty ANTHROPIC_API_KEY= in .env must not
