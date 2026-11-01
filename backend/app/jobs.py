@@ -115,6 +115,7 @@ class JobStore:
                 tshark_path=tshark_path, pcap_path=pcap_path,
                 original_filename=filename, size_bytes=size_bytes,
             )
+            self._attach_session(result, job.owner_id, pcap_path, filename)
         except Exception as exc:
             error = str(exc)
         finally:
@@ -130,6 +131,24 @@ class JobStore:
                 job.status = "error" if error is not None else "done"
                 job.finished_at = time.time()
                 self._cleanup_locked()
+
+    @staticmethod
+    def _attach_session(result: AnalysisResult, owner_id: str, pcap_path: str,
+                        filename: str) -> None:
+        """Local queue only: keep the capture for the investigation session."""
+        if not config.SESSIONS_ENABLED:
+            return
+        from .sessions import session_info, session_store
+
+        try:
+            session = session_store.create(owner_id, pcap_path, filename, result)
+        except Exception:
+            logging.getLogger("uvicorn.error").warning(
+                "No se pudo crear la sesión de investigación para el trabajo.",
+                exc_info=True,
+            )
+            return
+        result.session = session_info(session)
 
     def _cleanup_locked(self) -> None:
         now = time.time()
