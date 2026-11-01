@@ -14,6 +14,7 @@ from .. import config
 from ..sessions import Session
 from . import stats_parse
 from .fields import check_fields
+from .stream_metrics import StreamPacket, compute_stream_metrics, select_rows
 from .tshark_run import ToolError, run_tshark, validate_filter
 
 
@@ -191,5 +192,95 @@ def statistics(
     return ToolResult(
         content={"kind": kind, "filter": display_filter, "rows": rows,
                  "returned": len(rows), "truncated": truncated},
+        truncated=truncated,
+    )
+
+
+# ---- stream_detail -----------------------------------------------------------
+_ANALYSIS_FIELDS = (
+    ("tcp.analysis.retransmission", "retransmission"),
+    ("tcp.analysis.fast_retransmission", "fast_retransmission"),
+    ("tcp.analysis.spurious_retransmission", "spurious_retransmission"),
+    ("tcp.analysis.duplicate_ack", "dup_ack"),
+    ("tcp.analysis.out_of_order", "out_of_order"),
+    ("tcp.analysis.lost_segment", "lost_segment"),
+    ("tcp.analysis.zero_window", "zero_window"),
+    ("tcp.analysis.window_full", "window_full"),
+    ("tcp.analysis.zero_window_probe", "zero_window_probe"),
+    ("tcp.analysis.window_update", "window_update"),
+    ("tcp.analysis.keep_alive", "keep_alive"),
+)
+_STREAM_FIELDS = (
+    "frame.number", "frame.time_relative", "frame.time_delta_displayed", "ip.src", "ipv6.src",
+    "tcp.srcport", "udp.srcport", "ip.dst", "ipv6.dst", "tcp.dstport", "udp.dstport",
+    "tcp.flags.str", "tcp.seq", "tcp.ack", "tcp.len", "udp.length", "tcp.window_size",
+    "tcp.analysis.ack_rtt",
+)
+# tshark's tcp.flags.str letters (position is fixed, "·" means clear).
+_FLAG_LETTERS = {"A": "ACK", "P": "PSH", "R": "RST", "S": "SYN", "F": "FIN", "U": "URG", "E": "ECE", "C": "CWR"}
+
+
+def _opt_int(value: str) -> Optional[int]:
+    return int(value) if value.isdigit() else None
+
+
+def _opt_float(value: str) -> Optional[float]:
+    try:
+        return float(value) if value else None
+    except ValueError:
+        return None
+
+
+def stream_detail(ctx: ToolContext, stream_id: int, protocol: str = "tcp") -> ToolResult:
+    """Packet-by-packet view of one conversation plus computed metrics."""
+    if protocol not in ("tcp", "udp"):
+        return _error("unsupported_protocol", protocols=["tcp", "udp"])
+    args = ["-r", ctx.pcap_path, "-Y", "%s.stream eq %d" % (protocol, int(stream_id)),
+            "-T", "fields", "-E", "separator=\t", "-E", "occurrence=f"]
+    names = list(_STREAM_FIELDS) + [f for f, _ in _ANALYSIS_FIELDS]
+    for name in names:
+        args += ["-e", name]
+    try:
+        out = run_tshark(args)
+    except ToolError as exc:
+        return _error("tool_failed", message=str(exc))
+    packets: List[StreamPacket] = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        v = dict(zip(names, line.split("\t")))
+        flag_str = v.get("tcp.flags.str", "")
+        packets.append(StreamPacket(
+            frame=int(v["frame.number"]),
+            time=float(v["frame.time_relative"] or 0),
+            src=v.get("ip.src") or v.get("ipv6.src") or "",
+            sport=_opt_int(v.get("tcp.srcport") or v.get("udp.srcport") or "") or 0,
+            dst=v.get("ip.dst") or v.get("ipv6.dst") or "",
+            dport=_opt_int(v.get("tcp.dstport") or v.get("udp.dstport") or "") or 0,
+            flags=[_FLAG_LETTERS[c] for c in flag_str if c in _FLAG_LETTERS],
+            seq=_opt_int(v.get("tcp.seq", "")),
+            ack=_opt_int(v.get("tcp.ack", "")),
+            length=_opt_int(v.get("tcp.len") or v.get("udp.length") or "") or 0,
+            window=_opt_int(v.get("tcp.window_size", "")),
+            analysis=[name for field, name in _ANALYSIS_FIELDS if v.get(field)],
+            ack_rtt=_opt_float(v.get("tcp.analysis.ack_rtt", "")),
+            delta=_opt_float(v.get("frame.time_delta_displayed", "")) or 0.0,
+        ))
+    if not packets:
+        return _error("stream_not_found", stream_id=int(stream_id), protocol=protocol)
+    metrics = compute_stream_metrics(packets)
+    a = metrics["endpoints"]["a"]
+    rows, truncated = select_rows(packets, config.TOOL_MAX_ROWS)
+    return ToolResult(
+        content={
+            "stream_id": int(stream_id),
+            "protocol": protocol,
+            "metrics": metrics,
+            "rows": [
+                {**p.__dict__, "direction": "a_to_b" if "%s:%s" % (p.src, p.sport) == a else "b_to_a"}
+                for p in rows
+            ],
+            "rows_truncated": truncated,
+        },
         truncated=truncated,
     )

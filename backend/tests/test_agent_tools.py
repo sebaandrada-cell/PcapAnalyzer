@@ -182,3 +182,53 @@ def test_statistics_kinds_on_sample(ctx):
     assert len(filtered.content["rows"]) == 1
     assert statistics(ctx, "conversations_tcp", display_filter="tcp.port ==== 80").is_error
     assert set(STAT_KINDS) >= {"conversations_tcp", "io_per_interval", "expert"}
+
+
+# ---- stream_detail -------------------------------------------------------------
+from app.agent.stream_metrics import StreamPacket, compute_stream_metrics, select_rows  # noqa: E402
+from app.agent.tools import stream_detail  # noqa: E402
+
+
+def _pk(frame, t, a_to_b=True, flags=(), seq=None, ack=None, length=0, analysis=(), rtt=None):
+    src, sport, dst, dport = (("10.0.0.1", 1000, "10.0.0.2", 80) if a_to_b
+                              else ("10.0.0.2", 80, "10.0.0.1", 1000))
+    return StreamPacket(frame, t, src, sport, dst, dport, list(flags), seq, ack, length,
+                        65535, list(analysis), rtt, 0.0)
+
+
+def test_compute_stream_metrics_synthetic():
+    pk = [
+        _pk(1, 0.0, True, ["SYN"]), _pk(2, 0.05, False, ["SYN", "ACK"], rtt=0.05),
+        _pk(3, 0.06, True, ["ACK"], rtt=0.01), _pk(4, 0.1, True, ["PSH", "ACK"], length=100),
+        _pk(5, 0.3, False, ["ACK"], rtt=0.2),
+        _pk(6, 2.3, True, ["PSH", "ACK"], length=100, analysis=["retransmission"]),
+        _pk(7, 2.4, False, ["RST", "ACK"]),
+    ]
+    m = compute_stream_metrics(pk)
+    assert m["handshake_rtt_ms"] == 50.0 and m["bytes_a_to_b"] == 200 and m["packets"] == 7
+    assert m["largest_gap"] == {"after_frame": 5, "before_frame": 6, "seconds": 2.0, "last_sender": "b"}
+    assert m["events"]["retransmission"] == [6]
+    assert m["close"] == {"type": "rst", "initiator": "b", "frame": 7,
+                          "seconds_after_last_data": pytest.approx(0.1)}
+    assert m["ack_rtt_ms"]["b_to_a"]["max"] == 200.0
+
+
+def test_select_rows_keeps_events():
+    pk = [_pk(i, i * 0.01) for i in range(1, 501)]
+    pk[249].analysis = ["retransmission"]
+    rows, truncated = select_rows(pk, 50)
+    assert truncated and [r.frame for r in rows[:5]] == [1, 2, 3, 4, 5]
+    assert 250 in [r.frame for r in rows] and rows[-1].frame == 500
+
+
+@needs_tshark
+def test_stream_detail_on_sample(ctx):
+    r = stream_detail(ctx, 0)
+    assert not r.is_error
+    assert r.content["metrics"]["endpoints"] == {"a": "10.0.0.1:34567", "b": "10.0.0.2:80"}
+    assert r.content["metrics"]["events"]["retransmission"] == [5, 6]
+    assert 7 in r.content["metrics"]["events"]["zero_window"]
+    r1 = stream_detail(ctx, 1)
+    assert r1.content["metrics"]["close"]["type"] == "rst"
+    assert r1.content["metrics"]["handshake_rtt_ms"] is None
+    assert stream_detail(ctx, 999).is_error and stream_detail(ctx, 0, protocol="sctp").is_error
