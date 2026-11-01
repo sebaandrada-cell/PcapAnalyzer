@@ -28,9 +28,10 @@ import { loadDemo, useDemoRoute, type DemoData } from './demo'
 import { useSettings } from './settings'
 import { isSupabaseConfigured } from './supabase'
 import CookieNotice from './components/CookieNotice'
+import ContactForm from './components/ContactForm'
 import CookiePolicy from './components/CookiePolicy'
 import SiteFooter from './components/SiteFooter'
-import { useCookiesRoute } from './policyRoute'
+import { useContactRoute, useCookiesRoute } from './policyRoute'
 
 // `demo` is only passed by the public demo: the dashboard starts with the
 // pre-computed sample analysis and nothing talks to the backend.
@@ -253,12 +254,13 @@ function Routes() {
 
 export default function App() {
   const cookiesRoute = useCookiesRoute()
+  const contactRoute = useContactRoute()
   return (
     <>
-      {cookiesRoute ? (
+      {cookiesRoute || contactRoute ? (
         <>
           <SettingsBar />
-          <CookiePolicy />
+          {cookiesRoute ? <CookiePolicy /> : <ContactForm />}
         </>
       ) : (
         <Routes />

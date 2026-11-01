@@ -80,6 +80,23 @@ lo vuelve a desplegar.
 Si cambias `VITE_API_URL` o las URLs permitidas de Supabase, vuelve a desplegar
 el frontend para que la configuración quede incluida en el bundle.
 
+## 5. Formulario de contacto (Vercel)
+
+La web no publica ningún correo: el contacto va por el formulario `#contacto`, que usa la
+función `frontend/api/contacto.js`. El correo de destino vive solo en variables de Vercel.
+
+1. En [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) crea un widget
+   (o añade el dominio de Vercel a uno existente). Copia la **site key** (pública) y la **secret key**.
+2. En Resend crea una clave de API. Con el remitente de pruebas solo se entrega al correo de la
+   cuenta de Resend; para otro destino, verifica un dominio.
+3. En Vercel → Settings → Environment Variables (proyecto `pcap-analyzer`, Production):
+   - `VITE_TURNSTILE_SITE_KEY`: la site key (pública).
+   - `TURNSTILE_SECRET`: la secret key.
+   - `RESEND_API_KEY`: la clave de Resend.
+   - `CONTACT_TO`: el correo que recibe los mensajes.
+   - `CONTACT_FROM` (opcional) y `CONTACT_ORIGINS` (opcional, orígenes extra separados por comas).
+4. Vuelve a desplegar. Sin estas variables el formulario responde «no disponible» y no envía nada.
+
 ## Límites de esta beta
 
 - Vercel proporciona un subdominio gratuito; no hace falta comprar un dominio

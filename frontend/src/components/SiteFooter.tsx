@@ -5,6 +5,8 @@ export default function SiteFooter() {
   return (
     <footer className="site-footer">
       <a href="#cookies">{t('cookies.link')}</a>
+      {' · '}
+      <a href="#contacto">{t('contact.link')}</a>
     </footer>
   )
 }
