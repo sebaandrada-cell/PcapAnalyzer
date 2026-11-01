@@ -248,6 +248,15 @@ class Issue(BaseModel):
     evidence: Dict[str, object] = Field(default_factory=dict)
 
 
+class SessionInfo(BaseModel):
+    """Handle of the investigation session created for this analysis (if any)."""
+
+    id: str
+    expires_at: float  # epoch seconds
+    ttl_minutes: int
+    content_allowed: bool
+
+
 class Meta(BaseModel):
     engine_version: str
     tshark_version: str
@@ -272,3 +281,5 @@ class AnalysisResult(BaseModel):
     expert_info: List[ExpertEntry] = Field(default_factory=list)
     resolved_names: List[ResolvedName] = Field(default_factory=list)
     meta: Meta
+    # None when sessions are disabled or the analysis ran in another process.
+    session: Optional[SessionInfo] = None

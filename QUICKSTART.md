@@ -77,7 +77,7 @@ LLM_DEMO=0
 y reinicia (`Ctrl+C` y `./start.sh`). **Importante:** mientras `LLM_DEMO=1` el modo
 demo tiene prioridad sobre tu clave, así que hay que ponerlo a `0`. Coste
 orientativo: cada diagnóstico ~0,05–0,10 € con el modelo por defecto
-(`claude-opus-4-8`); puedes usar uno más barato con `LLM_MODEL=claude-haiku-4-5`.
+(`claude-opus-5-5`); puedes usar uno más barato con `LLM_MODEL=claude-sonnet-5-5`.
 
 ## Ajustes útiles (variables de entorno)
 
@@ -88,7 +88,7 @@ Puedes ponerlas en el `.env` de la raíz:
 | `API_TOKENS` | *(lo genera `start.sh`)* | Token(s) de acceso, separados por comas |
 | `LLM_DEMO` | `1` | `1` = IA simulada; `0` = IA real (necesita clave) |
 | `ANTHROPIC_API_KEY` | *(vacío)* | Clave para el diagnóstico con IA real |
-| `LLM_MODEL` | `claude-opus-4-8` | Modelo de IA a usar |
+| `LLM_MODEL` | `claude-opus-5-5` | Modelo de IA a usar |
 | `PCAPANALYZER_PORT` | `8080` | Puerto de la interfaz web |
 | `MAX_UPLOAD_MB` | `200` | Tamaño máximo de subida |
 | `ANALYZE_WORKERS` | `2` | Análisis en paralelo para capturas grandes |
@@ -179,7 +179,7 @@ LLM_DEMO=0
 
 and restart (`Ctrl+C`, then `./start.sh`). **Important:** while `LLM_DEMO=1`, demo
 mode takes priority over your key, so it must be set to `0`. Roughly ~0.05–0.10 €
-per diagnosis with the default model; use `LLM_MODEL=claude-haiku-4-5` for a
+per diagnosis with the default model; use `LLM_MODEL=claude-sonnet-5-5` for a
 cheaper one.
 
 ## Troubleshooting

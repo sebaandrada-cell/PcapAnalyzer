@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import gzip
 import zlib
 from contextlib import asynccontextmanager
@@ -29,10 +30,12 @@ from .auth import (
     require_api_token_no_rate_limit,
 )
 from .guards import client_ip, ip_limiter
+from .agent.router import router as agent_router
 from .jobs import JobCapacityError, job_store
 from .llm.client import availability as ai_availability
 from .llm.router import router as ai_router
 from .models import AnalysisResult
+from .sessions import session_info, session_store
 from .report import build_report
 from .supabase_jobs import shared_job_store
 from .tshark import (
@@ -80,7 +83,21 @@ async def lifespan(_: FastAPI):
                      install_instructions())
     else:
         logger.info("tshark detectado en %s", tshark_path)
+    # Investigation sessions never survive a restart: purge leftovers and keep
+    # expiring idle ones in the background.
+    session_store.purge_orphans()
+    stop_cleanup = threading.Event()
+
+    def _sweep() -> None:
+        while not stop_cleanup.wait(60):
+            try:
+                session_store.cleanup()
+            except Exception:  # pragma: no cover - never let the sweeper die
+                logger.exception("Error limpiando sesiones de investigación")
+
+    threading.Thread(target=_sweep, name="session-cleanup", daemon=True).start()
     yield
+    stop_cleanup.set()
 
 
 app = FastAPI(
@@ -94,6 +111,7 @@ app = FastAPI(
 )
 
 app.include_router(ai_router)
+app.include_router(agent_router)
 
 
 @app.middleware("http")
@@ -175,7 +193,7 @@ async def throttle_and_cap_body(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -201,6 +219,28 @@ def health() -> dict:
         "max_upload_mb": config.MAX_UPLOAD_MB,
         "max_decompressed_mb": config.MAX_DECOMPRESSED_MB,
     }
+
+
+def _attach_session(
+    result: AnalysisResult, principal: Principal, pcap_path: str, filename: str
+) -> None:
+    """Keep the capture (encrypted) for the interactive investigation.
+
+    No-op when sessions are disabled or in shared-queue mode, where the
+    analysis runs in another process than the one answering the chat. The
+    analysis response never fails because of the session.
+    """
+    if not config.SESSIONS_ENABLED or principal.auth_mode == "supabase":
+        return
+    try:
+        session = session_store.create(principal.tenant_id, pcap_path, filename, result)
+    except Exception:
+        logging.getLogger("uvicorn.error").warning(
+            "No se pudo crear la sesión de investigación; el análisis se devuelve sin ella.",
+            exc_info=True,
+        )
+        return
+    result.session = session_info(session)
 
 
 def _save_upload(file: UploadFile) -> str:
@@ -284,12 +324,15 @@ def analyze(
             analysis_concurrency.acquire(principal.tenant_id)
             local_slot_acquired = True
         size_bytes = os.path.getsize(tmp_path)
-        return analyze_pcap(
+        filename = file.filename or "capture.pcap"
+        result = analyze_pcap(
             tshark_path=tshark_path,
             pcap_path=tmp_path,
-            original_filename=file.filename or "capture.pcap",
+            original_filename=filename,
             size_bytes=size_bytes,
         )
+        _attach_session(result, principal, tmp_path, filename)
+        return result
     except TsharkTimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc))
     except TsharkError as exc:

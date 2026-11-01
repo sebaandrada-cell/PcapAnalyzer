@@ -174,7 +174,40 @@ Dos endpoints que envían a la Anthropic API **solo el resumen JSON del análisi
 1. **IA real**: copia `backend/.env.example` a `backend/.env`, pega tu clave en `ANTHROPIC_API_KEY` y reinicia el backend (el `.env` se carga automáticamente y está en `.gitignore`). Con Docker Compose basta un `.env` en la raíz del proyecto con la misma variable.
 2. **Modo demo** (`LLM_DEMO=1` en el `.env`): respuestas simuladas generadas desde el propio análisis, sin llamar a la API — sin coste ni credenciales. El diagnóstico y las explicaciones se marcan como "(modo demo)".
 
-Sin credenciales ni modo demo, `GET /health` lo indica (`ai.available: false`) y los endpoints devuelven `503` con instrucciones; el resto de la aplicación funciona con normalidad. Variables: `LLM_MODEL` (por defecto `claude-opus-4-8`), `LLM_MAX_TOKENS` (4096), `LLM_TIMEOUT_S` (120), `LLM_DEMO`. Los strings procedentes de la captura se tratan como datos no confiables también en los prompts.
+Sin credenciales ni modo demo, `GET /health` lo indica (`ai.available: false`) y los endpoints devuelven `503` con instrucciones; el resto de la aplicación funciona con normalidad. Variables: `LLM_MODEL` (por defecto `claude-opus-5-5`), `LLM_MAX_TOKENS` (4096), `LLM_TIMEOUT_S` (120), `LLM_DEMO`. Los strings procedentes de la captura se tratan como datos no confiables también en los prompts.
+
+### Investigación con IA (sesiones)
+
+Tras analizar una captura, el backend la conserva **cifrada en disco local** durante
+`SESSION_TTL_MINUTES` (60) de inactividad para que la IA pueda investigarla de verdad: en
+vez de leer un resumen, el modelo dispone de seis herramientas que el backend ejecuta sobre
+el pcap con tshark (`capture_overview`, `filter_packets` con filtros reales de Wireshark,
+`stream_detail` con RTT/huecos/retransmisiones por flujo, `statistics` sobre `tshark -z`,
+`follow_stream` y `protocol_reference`). Al abrir la captura la IA hace una investigación
+automática y entrega un informe con evidencia (`[[pkt: N]]`, `[[filter: …]]`); después se
+pueden hacer preguntas de seguimiento por `POST /sessions/{id}/chat` (SSE).
+
+- La clave de cifrado vive solo en memoria: al reiniciar, los archivos huérfanos quedan
+  ilegibles y se borran. `DELETE /sessions/{id}` borra la captura al momento; también lo hace
+  «Analizar otra captura» en la interfaz.
+- **Contenido de los paquetes**: por defecto la IA solo ve cabeceras y metadatos. El
+  interruptor por sesión (`PATCH /sessions/{id}` con `content_allowed: true`) habilita
+  `follow_stream` y los campos de payload, con credenciales enmascaradas. Lo que devuelven las
+  herramientas viaja a la API de Anthropic; el pcap nunca.
+- **Topes duros**: `AGENT_MAX_TOOL_CALLS` (25) y `AGENT_MAX_MODEL_CALLS` (20) por pregunta,
+  `AGENT_TASK_BUDGET_TOKENS` (60 000) por pregunta, `SESSION_MAX_TOKENS` (2 M) por sesión,
+  `LLM_MAX_CALLS_PER_DAY` / `_GLOBAL` (cuentan preguntas), `AGENT_WORKERS` (2) investigaciones
+  simultáneas, `TOOL_TIMEOUT_S` (30) y `TOOL_MAX_ROWS` (200) por herramienta. Otras:
+  `SESSIONS_ENABLED`, `SESSION_DIR`, `MAX_SESSIONS` (20), `MAX_SESSION_BYTES` (2 GiB),
+  `TOOL_MAX_OUTPUT_BYTES`, `AGENT_EFFORT` (`high`), `AGENT_COMPACT_TOKENS`.
+- En modo cola compartida (Supabase) el análisis corre en otro proceso y **no** se crean
+  sesiones (`session: null`); la investigación interactiva es una función del self-hosted.
+- Sin clave (`LLM_DEMO=1`) el informe inicial es texto determinista con la evidencia de los
+  detectores y el chat indica cómo activar la IA.
+- Coste: lo paga la clave del propietario. Estimación con `claude-opus-5-5` (4 $/M entrada,
+  20 $/M salida, caché 0,20 $/M): investigación inicial 0,20-0,80 €, pregunta de seguimiento
+  0,05-0,25 €. Pendiente de confirmar con mediciones reales; el evento `usage` del chat
+  devuelve los tokens exactos de cada pregunta.
 
 ### Informe PDF y capturas grandes (Fase 4)
 
