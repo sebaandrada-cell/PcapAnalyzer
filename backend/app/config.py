@@ -6,6 +6,7 @@ ANTHROPIC_API_KEY can live there instead of the shell environment.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import List
 
@@ -47,6 +48,31 @@ IP_MAX_UPLOADS_PER_MINUTE = _int_env("IP_MAX_UPLOADS_PER_MINUTE", 6)
 TRUSTED_PROXY_HOPS = _int_env("TRUSTED_PROXY_HOPS", 0)
 LLM_MAX_CALLS_PER_DAY = _int_env("LLM_MAX_CALLS_PER_DAY", 20)
 LLM_MAX_CALLS_PER_DAY_GLOBAL = _int_env("LLM_MAX_CALLS_PER_DAY_GLOBAL", 200)
+
+# Investigation sessions and the AI agent
+# (see docs/superpowers/specs/2026-11-01-ai-investigation-agent-design.md).
+# The capture is kept encrypted on local disk while the user investigates it;
+# the key only lives in process memory. Every cap below is a hard ceiling.
+SESSIONS_ENABLED = os.environ.get("SESSIONS_ENABLED", "1").lower() in ("1", "true", "yes")
+SESSION_DIR = os.environ.get(
+    "SESSION_DIR",
+    os.path.join(tempfile.gettempdir(), "pcapanalyzer", "sessions"),
+)
+SESSION_TTL_MINUTES = _int_env("SESSION_TTL_MINUTES", 60)
+MAX_SESSIONS = _int_env("MAX_SESSIONS", 20)
+MAX_SESSION_BYTES = _int_env("MAX_SESSION_BYTES", 2 * 1024 ** 3)
+SESSION_MAX_TOKENS = _int_env("SESSION_MAX_TOKENS", 2_000_000)
+TOOL_TIMEOUT_S = _int_env("TOOL_TIMEOUT_S", 30)
+TOOL_MAX_ROWS = _int_env("TOOL_MAX_ROWS", 200)
+TOOL_MAX_OUTPUT_BYTES = _int_env("TOOL_MAX_OUTPUT_BYTES", 65536)
+AGENT_MAX_TOOL_CALLS = _int_env("AGENT_MAX_TOOL_CALLS", 25)
+AGENT_MAX_MODEL_CALLS = _int_env("AGENT_MAX_MODEL_CALLS", 20)
+AGENT_TASK_BUDGET_TOKENS = _int_env("AGENT_TASK_BUDGET_TOKENS", 60_000)
+AGENT_WORKERS = _int_env("AGENT_WORKERS", 2)
+AGENT_EFFORT = os.environ.get("AGENT_EFFORT", "high").strip().lower()
+if AGENT_EFFORT not in {"low", "medium", "high", "xhigh", "max"}:
+    raise ValueError("AGENT_EFFORT must be one of low, medium, high, xhigh, max.")
+AGENT_COMPACT_TOKENS = _int_env("AGENT_COMPACT_TOKENS", 150_000)
 # Interactive API docs expose the full schema to scanners; off unless asked.
 DOCS_ENABLED = os.environ.get("DOCS_ENABLED", "").lower() in ("1", "true", "yes")
 
@@ -89,7 +115,7 @@ TOP_TALKERS_LIMIT = _int_env("TOP_TALKERS_LIMIT", 10)
 
 # AI layer (Fase 3). Credentials come from the environment (ANTHROPIC_API_KEY
 # or an `ant auth login` profile); only the model and limits live here.
-LLM_MODEL = os.environ.get("LLM_MODEL", "claude-opus-4-8")
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-opus-5-5")
 LLM_MAX_TOKENS = _int_env("LLM_MAX_TOKENS", 4096)
 LLM_TIMEOUT_S = _int_env("LLM_TIMEOUT_S", 120)
 # Demo mode: deterministic fake AI responses, no API calls or credentials.
