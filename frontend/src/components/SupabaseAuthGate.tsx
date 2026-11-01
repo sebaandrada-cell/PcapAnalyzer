@@ -1,7 +1,9 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { TURNSTILE_SITE_KEY } from '../contactConfig'
 import { useSettings } from '../settings'
 import { supabaseClient } from '../supabase'
+import { loadTurnstile } from '../turnstile'
 import SettingsBar from './SettingsBar'
 
 interface Props {
@@ -9,7 +11,7 @@ interface Props {
 }
 
 export default function SupabaseAuthGate({ children }: Props) {
-  const { t } = useSettings()
+  const { t, lang } = useSettings()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [signUp, setSignUp] = useState(false)
@@ -18,6 +20,9 @@ export default function SupabaseAuthGate({ children }: Props) {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [captcha, setCaptcha] = useState('')
+  const captchaBox = useRef<HTMLDivElement>(null)
+  const captchaId = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     if (!supabaseClient) return
@@ -41,16 +46,47 @@ export default function SupabaseAuthGate({ children }: Props) {
     }
   }, [t])
 
+  // Supabase CAPTCHA protection (Auth > Attack Protection) expects a Turnstile token on
+  // sign-in and sign-up. The widget only shows when a site key is configured.
+  const showForm = !loading && !session
+  useEffect(() => {
+    const siteKey = TURNSTILE_SITE_KEY
+    if (!siteKey || !showForm || !captchaBox.current) return
+    let cancelled = false
+    loadTurnstile()
+      .then((api) => {
+        if (cancelled || !captchaBox.current) return
+        captchaId.current = api.render(captchaBox.current, {
+          sitekey: siteKey,
+          language: lang,
+          callback: setCaptcha,
+          'expired-callback': () => setCaptcha(''),
+          'error-callback': () => setCaptcha(''),
+        })
+      })
+      .catch(() => setError(t('auth.captchaFailed')))
+    return () => {
+      cancelled = true
+      if (captchaId.current) window.turnstile?.remove(captchaId.current)
+      captchaId.current = undefined
+    }
+  }, [showForm, lang, t])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabaseClient) return
+    if (TURNSTILE_SITE_KEY && !captcha) {
+      setError(t('auth.captchaRequired'))
+      return
+    }
+    const options = captcha ? { captchaToken: captcha } : undefined
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
       const response = signUp
-        ? await supabaseClient.auth.signUp({ email, password })
-        : await supabaseClient.auth.signInWithPassword({ email, password })
+        ? await supabaseClient.auth.signUp({ email, password, options })
+        : await supabaseClient.auth.signInWithPassword({ email, password, options })
       if (response.error) throw response.error
       if (signUp && !response.data.session) {
         setMessage(t('auth.confirmEmail'))
@@ -59,6 +95,9 @@ export default function SupabaseAuthGate({ children }: Props) {
       setError(submitError instanceof Error ? submitError.message : t('auth.failed'))
     } finally {
       setBusy(false)
+      // A Turnstile token is single-use.
+      setCaptcha('')
+      if (captchaId.current) window.turnstile?.reset(captchaId.current)
     }
   }
 
@@ -102,6 +141,7 @@ export default function SupabaseAuthGate({ children }: Props) {
                 required
               />
             </label>
+            {TURNSTILE_SITE_KEY && <div ref={captchaBox} className="auth-captcha" />}
             {error && <div className="upload-error" role="alert">{error}</div>}
             {message && <div className="auth-message" role="status">{message}</div>}
             <button type="submit" disabled={busy}>

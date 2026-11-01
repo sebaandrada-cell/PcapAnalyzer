@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { TURNSTILE_SITE_KEY } from '../contactConfig'
+import { loadTurnstile } from '../turnstile'
 import { useSettings } from '../settings'
 
 // Contact form (no public email anywhere). It posts to the Vercel function /api/contacto,
@@ -8,37 +9,9 @@ import { useSettings } from '../settings'
 // Reached through the `#contacto` fragment so it works before signing in.
 
 const SITE_KEY = TURNSTILE_SITE_KEY
-const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 const MAX_MESSAGE = 2000
 
-type TurnstileApi = {
-  render: (el: string | HTMLElement, opts: { sitekey: string; language?: string; callback?: (token: string) => void; 'expired-callback'?: () => void; 'error-callback'?: () => void }) => string
-  reset: (id?: string) => void
-  remove: (id?: string) => void
-}
-declare global {
-  interface Window {
-    turnstile?: TurnstileApi
-  }
-}
-
 type Status = 'idle' | 'sending' | 'sent' | 'error'
-
-// Loads the Turnstile script only when this page opens (not on every visit).
-function loadTurnstile(): Promise<TurnstileApi> {
-  return new Promise((resolve, reject) => {
-    if (window.turnstile) return resolve(window.turnstile)
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`)
-    const script = existing ?? document.createElement('script')
-    script.addEventListener('load', () => (window.turnstile ? resolve(window.turnstile) : reject(new Error('turnstile'))))
-    script.addEventListener('error', () => reject(new Error('turnstile')))
-    if (!existing) {
-      script.src = SCRIPT_SRC
-      script.async = true
-      document.head.appendChild(script)
-    }
-  })
-}
 
 export default function ContactForm() {
   const { t, lang } = useSettings()
