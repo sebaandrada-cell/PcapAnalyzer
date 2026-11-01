@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./backend/.env)",
+      "Read(./backend/.env.*)",
+      "Read(./frontend/.env)",
+      "Read(./frontend/.env.*)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker-compose down -v*)"
+    ]
+  }
+}
