@@ -265,3 +265,50 @@ def test_protocol_reference_topics():
         r = protocol_reference(topic)
         assert not r.is_error and len(r.content["text"]) > 200
     assert protocol_reference("quantum").is_error
+
+
+# ---- tool definitions and dispatcher ------------------------------------------------
+import json  # noqa: E402
+
+from app.agent.tools import (  # noqa: E402
+    TOOL_DEFINITIONS, ToolResult, execute_tool, serialize_result, tool_result_block,
+)
+
+
+def test_tool_definitions_are_strict_and_complete():
+    names = {t["name"] for t in TOOL_DEFINITIONS}
+    assert names == {"capture_overview", "filter_packets", "stream_detail", "statistics",
+                     "follow_stream", "protocol_reference"}
+    for t in TOOL_DEFINITIONS:
+        assert t["strict"] is True
+        assert t["input_schema"]["additionalProperties"] is False and "required" in t["input_schema"]
+
+
+def test_serialize_result_truncates_to_valid_json():
+    big = ToolResult(content={"rows": [{"frame": i, "_ws.col.info": "x" * 500} for i in range(400)]})
+    text, truncated = serialize_result(big, max_bytes=20000)
+    assert truncated and len(text.encode()) <= 20000
+    data = json.loads(text)
+    assert data["truncated"] is True and len(data["rows"]) < 400
+
+
+@needs_tshark
+def test_execute_tool_dispatch_and_errors(ctx):
+    assert not execute_tool(ctx, "capture_overview", {}).is_error
+    assert execute_tool(ctx, "nope", {}).content["error"] == "unknown_tool"
+    big = execute_tool(ctx, "filter_packets", {"display_filter": "tcp", "fields": ["frame.number"], "limit": 10 ** 9})
+    assert big.content["returned"] <= config.TOOL_MAX_ROWS
+    assert execute_tool(ctx, "stream_detail", {"stream_id": "zero"}).content["error"] == "invalid_input"
+    block = tool_result_block("tu_1", execute_tool(ctx, "protocol_reference", {"topic": "tls"}))
+    assert block["type"] == "tool_result" and block["is_error"] is False and "tls" in block["content"]
+
+
+@needs_tshark
+def test_execute_tool_timeout_is_reported_not_raised(ctx, monkeypatch):
+    from app.agent import tshark_run
+
+    def boom(*a, **k):
+        raise tshark_run.ToolTimeout("slow")
+
+    monkeypatch.setattr("app.agent.tools.run_tshark", boom)
+    assert execute_tool(ctx, "statistics", {"kind": "expert"}).content["error"] == "timeout"

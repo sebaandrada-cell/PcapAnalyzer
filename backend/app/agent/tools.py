@@ -7,9 +7,11 @@ raised, so the model can react to them.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .. import config
 from ..sessions import Session
@@ -17,7 +19,9 @@ from . import stats_parse
 from .fields import check_fields
 from .masking import mask_sensitive
 from .stream_metrics import StreamPacket, compute_stream_metrics, select_rows
-from .tshark_run import ToolError, run_tshark, validate_filter
+from .tshark_run import ToolError, ToolTimeout, run_tshark, validate_filter
+
+logger = logging.getLogger("pcapanalyzer.agent")
 
 
 @dataclass
@@ -347,3 +351,216 @@ def protocol_reference(topic: str) -> ToolResult:
         return _error("unknown_topic", topics=list(REFERENCE_TOPICS))
     with open(os.path.join(_REFERENCE_DIR, topic + ".md"), "r", encoding="utf-8") as handle:
         return ToolResult(content={"topic": topic, "text": handle.read()})
+
+
+# ---- definitions for the model and the dispatcher ----------------------------------
+def _schema(properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
+    return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
+
+
+_TRUNCATION_NOTE = " Output is bounded; a truncated result says so and you can narrow the filter or page."
+
+TOOL_DEFINITIONS: List[Dict[str, Any]] = [
+    {
+        "name": "capture_overview",
+        "description": (
+            "Everything the analysis engine already computed for this capture: summary, protocols, "
+            "TCP/UDP conversations with per-stream counters (retransmissions, dup ACKs, RTT...), top "
+            "talkers, tunnels, detected issues with evidence, Wireshark expert info, DNS/TLS/HTTP/DHCP "
+            "tables, service response times and resolved names. Call it first, once." + _TRUNCATION_NOTE
+        ),
+        "strict": True,
+        "input_schema": _schema({}, []),
+    },
+    {
+        "name": "filter_packets",
+        "description": (
+            "Apply a real Wireshark display filter to the capture and return the requested fields per "
+            "matching packet (frame.number is always included). Use it to verify a hypothesis or list "
+            "specific packets; prefer statistics/stream_detail for aggregates. Payload fields "
+            "(tcp.payload, data.data, http.file_data...) need the user's content switch." + _TRUNCATION_NOTE
+        ),
+        "strict": True,
+        "input_schema": _schema({
+            "display_filter": {"type": "string", "description": "Wireshark display filter, e.g. tcp.stream eq 7 && tcp.analysis.retransmission"},
+            "fields": {"type": "array", "items": {"type": "string"}, "description": "tshark field names, e.g. frame.time_relative, ip.src, tcp.flags.str, _ws.col.info"},
+            "limit": {"type": "integer", "description": "rows per page (1-200)"},
+            "offset": {"type": "integer", "description": "rows to skip (paging)"},
+        }, ["display_filter", "fields", "limit", "offset"]),
+    },
+    {
+        "name": "stream_detail",
+        "description": (
+            "Packet-by-packet table of one TCP or UDP conversation (time, direction, flags, seq/ack, "
+            "window, length, Wireshark analysis flags) plus computed metrics: handshake RTT, ACK RTT "
+            "stats per direction, throughput, largest idle gap and who was expected to talk, "
+            "retransmission/dup-ACK/zero-window events with frame numbers, and how it closed. Use it "
+            "to explain why a conversation is slow or failed." + _TRUNCATION_NOTE
+        ),
+        "strict": True,
+        "input_schema": _schema({
+            "stream_id": {"type": "integer", "description": "tcp.stream or udp.stream id"},
+            "protocol": {"type": "string", "enum": ["tcp", "udp"]},
+        }, ["stream_id", "protocol"]),
+    },
+    {
+        "name": "statistics",
+        "description": (
+            "Aggregates from tshark -z: conversations_tcp/udp/ip, endpoints_ip, io_per_interval "
+            "(frames and bytes per interval_s seconds), protocol_hierarchy, expert (all expert info "
+            "grouped by severity), dns (query/response/rcode counters) and service_response_time "
+            "(protocol: icmp, icmpv6, smb, smb2, ldap, rpc, dcerpc, snmp, kerberos). An optional "
+            "display_filter restricts the computation. Use it to find where traffic and symptoms "
+            "concentrate before looking at packets." + _TRUNCATION_NOTE
+        ),
+        "strict": True,
+        "input_schema": _schema({
+            "kind": {"type": "string", "enum": list(STAT_KINDS)},
+            "display_filter": {"type": ["string", "null"], "description": "optional Wireshark display filter"},
+            "interval_s": {"type": "integer", "description": "bucket size for io_per_interval (1-3600)"},
+            "protocol": {"type": ["string", "null"], "description": "for service_response_time only"},
+        }, ["kind", "display_filter", "interval_s", "protocol"]),
+    },
+    {
+        "name": "follow_stream",
+        "description": (
+            "Reassembled text of one TCP/UDP stream (like Wireshark's Follow Stream), credentials "
+            "masked. Only works when the user enabled 'allow packet content' for this session; "
+            "otherwise it returns content_disabled and you should ask the user to enable it, "
+            "explaining that payload may contain secrets. Use it for application-layer problems "
+            "(HTTP errors, SMB/SIP dialogs) once transport looks clean." + _TRUNCATION_NOTE
+        ),
+        "strict": True,
+        "input_schema": _schema({
+            "stream_id": {"type": "integer"},
+            "protocol": {"type": "string", "enum": ["tcp", "udp"]},
+            "direction": {"type": "string", "enum": ["both", "a_to_b", "b_to_a"]},
+            "max_bytes": {"type": "integer", "description": "256-65536"},
+        }, ["stream_id", "protocol", "direction", "max_bytes"]),
+    },
+    {
+        "name": "protocol_reference",
+        "description": (
+            "Curated reference notes on protocol semantics: tcp_analysis (Wireshark flags), icmp, tls "
+            "(handshake and alert codes), dns (rcodes and retry behaviour), dhcp, vpn (IKE/ESP/"
+            "WireGuard/OpenVPN), pmtud (MTU black holes), rtt_window (reading RTT, window, "
+            "throughput and gaps). Consult it instead of guessing what a code or flag means."
+        ),
+        "strict": True,
+        "input_schema": _schema({"topic": {"type": "string", "enum": list(REFERENCE_TOPICS)}}, ["topic"]),
+    },
+]
+
+_TOOL_SCHEMAS = {t["name"]: t["input_schema"] for t in TOOL_DEFINITIONS}
+# Strict schemas list every key as required (the API demands it); the dispatcher
+# still tolerates a missing optional key by applying these defaults.
+_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    "filter_packets": {"limit": 50, "offset": 0},
+    "stream_detail": {"protocol": "tcp"},
+    "statistics": {"display_filter": None, "interval_s": 1, "protocol": None},
+    "follow_stream": {"protocol": "tcp", "direction": "both", "max_bytes": 16384},
+}
+
+
+def _validate_input(
+    schema: Dict[str, Any], tool_input: Dict[str, Any], defaults: Dict[str, Any]
+) -> Optional[str]:
+    """Minimal JSON-schema check (types, enums, required) without extra dependencies."""
+    if not isinstance(tool_input, dict):
+        return "input must be an object"
+    for name in schema.get("required", []):
+        if name not in tool_input and name not in defaults:
+            return "missing required field: %s" % name
+    for name, value in tool_input.items():
+        prop = schema["properties"].get(name)
+        if prop is None:
+            return "unknown field: %s" % name
+        types = prop.get("type")
+        types = types if isinstance(types, list) else [types]
+        ok = False
+        for kind in types:
+            if kind == "null" and value is None:
+                ok = True
+            elif kind == "integer" and isinstance(value, int) and not isinstance(value, bool):
+                ok = True
+            elif kind == "string" and isinstance(value, str):
+                ok = True
+            elif kind == "array" and isinstance(value, list) and all(isinstance(v, str) for v in value):
+                ok = True
+        if not ok:
+            return "field %s must be of type %s" % (name, "/".join(types))
+        if "enum" in prop and value is not None and value not in prop["enum"]:
+            return "field %s must be one of %s" % (name, ", ".join(prop["enum"]))
+    return None
+
+
+def _run_tool(ctx: ToolContext, name: str, i: Dict[str, Any]) -> ToolResult:
+    if name == "capture_overview":
+        return capture_overview(ctx)
+    if name == "filter_packets":
+        return filter_packets(ctx, i["display_filter"], i["fields"], i["limit"], i["offset"])
+    if name == "stream_detail":
+        return stream_detail(ctx, i["stream_id"], i["protocol"])
+    if name == "statistics":
+        return statistics(ctx, i["kind"], i.get("display_filter"), i["interval_s"], i.get("protocol"))
+    if name == "follow_stream":
+        return follow_stream(ctx, i["stream_id"], i["protocol"], i["direction"], i["max_bytes"])
+    return protocol_reference(i["topic"])
+
+
+def execute_tool(ctx: ToolContext, name: str, tool_input: Dict[str, Any]) -> ToolResult:
+    """Validate, dispatch and never raise: errors come back as ToolResult(is_error=True)."""
+    schema = _TOOL_SCHEMAS.get(name)
+    if schema is None:
+        return _error("unknown_tool", tools=list(_TOOL_SCHEMAS))
+    defaults = _DEFAULTS.get(name, {})
+    problem = _validate_input(schema, tool_input, defaults)
+    if problem:
+        return _error("invalid_input", message=problem)
+    merged = dict(defaults)
+    merged.update(tool_input)
+    try:
+        return _run_tool(ctx, name, merged)
+    except ToolTimeout:
+        return _error("timeout", message="La consulta a la captura superó el tiempo máximo (%ds)." % config.TOOL_TIMEOUT_S)
+    except ToolError as exc:
+        return _error("tool_failed", message=str(exc))
+    except Exception:
+        logger.exception("Tool %s failed", name)  # no payload is logged, only the traceback
+        return _error("internal", message="La herramienta falló de forma inesperada.")
+
+
+def serialize_result(result: ToolResult, max_bytes: Optional[int] = None) -> Tuple[str, bool]:
+    """JSON text for the model, cut down (rows/text) until it fits in max_bytes."""
+    max_bytes = max_bytes or config.TOOL_MAX_OUTPUT_BYTES
+    content = result.content
+    text = json.dumps(content, ensure_ascii=False, default=str)
+    if len(text.encode("utf-8")) <= max_bytes:
+        return text, result.truncated
+    if not isinstance(content, dict):
+        text = text[: max_bytes - 1]
+        return json.dumps(text, ensure_ascii=False), True
+    shrunk = dict(content)
+    shrunk["truncated"] = True
+    shrunk["note"] = "Output cut to fit the size limit; narrow the filter, request fewer fields or page."
+    for _ in range(12):
+        text = json.dumps(shrunk, ensure_ascii=False, default=str)
+        if len(text.encode("utf-8")) <= max_bytes:
+            return text, True
+        rows = shrunk.get("rows")
+        if isinstance(rows, list) and len(rows) > 1:
+            shrunk["rows"] = rows[: max(1, len(rows) // 2)]
+            shrunk["returned"] = len(shrunk["rows"])
+            shrunk["has_more"] = True
+        elif isinstance(shrunk.get("text"), str) and len(shrunk["text"]) > 64:
+            shrunk["text"] = shrunk["text"][: len(shrunk["text"]) // 2]
+        else:
+            # Last resort: keep only the small scalar keys.
+            shrunk = {k: v for k, v in shrunk.items() if not isinstance(v, (list, dict, str)) or k in ("error", "note")}
+            shrunk["truncated"] = True
+    return json.dumps(shrunk, ensure_ascii=False, default=str)[:max_bytes], True
+
+
+def tool_result_block(tool_use_id: str, result: ToolResult) -> Dict[str, Any]:
+    text, _ = serialize_result(result)
+    return {"type": "tool_result", "tool_use_id": tool_use_id, "content": text, "is_error": result.is_error}
