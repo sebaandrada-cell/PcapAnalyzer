@@ -15,17 +15,22 @@ _MAX_TRACKED_KEYS = 10000
 
 
 def client_ip(request: Request) -> str:
-    """Best-effort client IP behind a reverse proxy.
+    """Best-effort client IP behind reverse proxies.
 
-    Render/nginx append the connecting address to X-Forwarded-For, so the last
-    entry is the one our own proxy saw; earlier entries are client-supplied and
-    spoofable.
+    Every trusted proxy appends the address it saw to X-Forwarded-For, so we
+    skip ``TRUSTED_PROXY_HOPS`` entries from the right and take the next one;
+    entries further left are client-supplied and spoofable. With fewer entries
+    than expected we fall back to the rightmost one (shared bucket, never
+    spoofable), so a short or malformed header never raises.
     """
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        last = forwarded.split(",")[-1].strip()
-        if last:
-            return last
+    entries = [
+        e.strip()
+        for e in request.headers.get("x-forwarded-for", "").split(",")
+        if e.strip()
+    ]
+    if entries:
+        index = len(entries) - 1 - config.TRUSTED_PROXY_HOPS
+        return entries[index] if index >= 0 else entries[-1]
     return request.client.host if request.client else "unknown"
 
 

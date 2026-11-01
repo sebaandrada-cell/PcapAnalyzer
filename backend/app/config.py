@@ -41,6 +41,10 @@ API_MAX_JOBS_PER_TOKEN = _int_env("API_MAX_JOBS_PER_TOKEN", 2)
 # ceilings on paid Anthropic calls, per principal and across the whole service.
 IP_MAX_REQUESTS_PER_MINUTE = _int_env("IP_MAX_REQUESTS_PER_MINUTE", 120)
 IP_MAX_UPLOADS_PER_MINUTE = _int_env("IP_MAX_UPLOADS_PER_MINUTE", 6)
+# Proxies between the client and the app that append to X-Forwarded-For
+# (0 = the last entry is the client, as with the bundled nginx; Render behind
+# Cloudflare appends two: the Cloudflare edge and Render's own proxy).
+TRUSTED_PROXY_HOPS = _int_env("TRUSTED_PROXY_HOPS", 0)
 LLM_MAX_CALLS_PER_DAY = _int_env("LLM_MAX_CALLS_PER_DAY", 20)
 LLM_MAX_CALLS_PER_DAY_GLOBAL = _int_env("LLM_MAX_CALLS_PER_DAY_GLOBAL", 200)
 # Interactive API docs expose the full schema to scanners; off unless asked.
