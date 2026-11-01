@@ -246,20 +246,6 @@ export interface AnalysisResult {
   session?: SessionInfo | null
 }
 
-export interface DiagnoseResponse {
-  diagnosis: string
-  model: string
-  usage: Record<string, number>
-}
-
-export interface QueryResponse {
-  filter: string
-  explanation: string
-  matched_tcp_streams: number[]
-  matched_issue_ids: string[]
-  model: string
-}
-
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -354,30 +340,7 @@ export async function exportReport(
   URL.revokeObjectURL(url)
 }
 
-export async function diagnose(
-  analysis: AnalysisResult,
-  lang: 'es' | 'en' = 'es',
-): Promise<DiagnoseResponse> {
-  const response = await fetch(`${API_BASE}/diagnose`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-    body: JSON.stringify({ analysis, lang }),
-  })
-  return parseOrThrow<DiagnoseResponse>(response)
-}
 
-export async function queryFilter(
-  question: string,
-  analysis: AnalysisResult,
-  lang: 'es' | 'en' = 'es',
-): Promise<QueryResponse> {
-  const response = await fetch(`${API_BASE}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-    body: JSON.stringify({ question, analysis, lang }),
-  })
-  return parseOrThrow<QueryResponse>(response)
-}
 
 // ---- investigation sessions -------------------------------------------------
 export const INVESTIGATE_SENTINEL = '__investigate__'

@@ -44,7 +44,6 @@ const es: Dict = {
       'Demo con una captura de ejemplo. Así trabaja PcapAnalyzer con tus capturas, que en la versión completa se analizan en tu propia máquina.',
     buy: 'Comprar · 5 €',
     signIn: 'Iniciar sesión',
-    queryDisabled: 'Las consultas en lenguaje natural no están disponibles en la demo; sí en la versión completa.',
     loading: 'Cargando la demo…',
     error: 'No se pudo cargar la demo.',
     back: 'Volver',
@@ -105,15 +104,6 @@ const es: Dict = {
     exporting: 'Generando…',
     exportTitle: 'Descargar informe PDF',
     meta: '{bytes} · {dur} de captura · analizado en {ms} ms · {tshark}',
-  },
-  query: {
-    placeholder: 'Muéstrame las conexiones fallidas hacia el servidor de correo',
-    ask: 'Consultar',
-    asking: 'Consultando…',
-    generated: 'Filtro generado:',
-    related: '{n} problema(s) relacionados resaltados',
-    applied: 'Selección aplicada a la lista de paquetes y problemas relacionados.',
-    noMatches: 'No hay conversaciones o problemas relacionados para filtrar en los datos analizados.',
   },
   metrics: {
     packets: 'Paquetes',
@@ -379,14 +369,6 @@ const es: Dict = {
     l7: 'Aplicación',
     l7detail: 'Subconjuntos detectables de DNS, DHCP y HTTP. No equivale a inspección de todas las aplicaciones.',
   },
-  diagnosis: {
-    title: 'Diagnóstico asistido',
-    intro:
-      'Genera un diagnóstico narrativo con IA: qué pasa, causa probable y siguiente paso recomendado. Solo se envía el resumen JSON del análisis, nunca la captura.',
-    generate: 'Generar diagnóstico',
-    loading: 'Analizando la captura con IA…',
-    regenerate: 'Regenerar',
-  },
   flow: {
     title: 'Diagrama de flujo',
     more: '+{n} paquetes más',
@@ -517,7 +499,6 @@ const en: Dict = {
       'Demo with a sample capture. This is how PcapAnalyzer works on your captures, which the full version analyzes on your own machine.',
     buy: 'Buy · €5',
     signIn: 'Sign in',
-    queryDisabled: 'Natural-language queries are not available in the demo; they are in the full version.',
     loading: 'Loading the demo…',
     error: 'The demo could not be loaded.',
     back: 'Back',
@@ -578,15 +559,6 @@ const en: Dict = {
     exporting: 'Generating…',
     exportTitle: 'Download PDF report',
     meta: '{bytes} · {dur} capture · analyzed in {ms} ms · {tshark}',
-  },
-  query: {
-    placeholder: 'Show me the failed connections to the mail server',
-    ask: 'Query',
-    asking: 'Querying…',
-    generated: 'Generated filter:',
-    related: '{n} related issue(s) highlighted',
-    applied: 'Selection applied to the packet list and related issues.',
-    noMatches: 'No related conversations or issues to filter in the analyzed data.',
   },
   metrics: {
     packets: 'Packets',
@@ -851,14 +823,6 @@ const en: Dict = {
     l6detail: 'Visible TLS alerts and metadata; encrypted payloads cannot be inspected without keys.',
     l7: 'Application',
     l7detail: 'Detectable subsets of DNS, DHCP, and HTTP. This is not inspection of every application.',
-  },
-  diagnosis: {
-    title: 'AI diagnosis',
-    intro:
-      'Generate a narrative diagnosis with AI: what is happening, likely cause and recommended next step. Only the analysis JSON summary is sent, never the capture.',
-    generate: 'Generate diagnosis',
-    loading: 'Analyzing the capture with AI…',
-    regenerate: 'Regenerate',
   },
   flow: {
     title: 'Flow graph',

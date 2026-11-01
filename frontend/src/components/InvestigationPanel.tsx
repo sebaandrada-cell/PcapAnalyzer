@@ -113,7 +113,19 @@ export default function InvestigationPanel({
     void send(INVESTIGATE_SENTINEL, null)
   }, [session, demo, send])
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  // Abort the stream on a real unmount only. React's development StrictMode
+  // mounts, unmounts and mounts again synchronously; aborting in that fake
+  // unmount would kill the automatic investigation before it is sent.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      window.setTimeout(() => {
+        if (!mountedRef.current) abortRef.current?.abort()
+      }, 0)
+    }
+  }, [])
 
   const streaming = state.turns.some((turn) => turn.streaming)
   const blocked = state.blockedReason !== null
