@@ -7,6 +7,7 @@ raised, so the model can react to them.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,7 @@ from .. import config
 from ..sessions import Session
 from . import stats_parse
 from .fields import check_fields
+from .masking import mask_sensitive
 from .stream_metrics import StreamPacket, compute_stream_metrics, select_rows
 from .tshark_run import ToolError, run_tshark, validate_filter
 
@@ -284,3 +286,64 @@ def stream_detail(ctx: ToolContext, stream_id: int, protocol: str = "tcp") -> To
         },
         truncated=truncated,
     )
+
+
+# ---- follow_stream -----------------------------------------------------------
+_DIRECTIONS = ("both", "a_to_b", "b_to_a")
+
+
+def follow_stream(
+    ctx: ToolContext,
+    stream_id: int,
+    protocol: str = "tcp",
+    direction: str = "both",
+    max_bytes: int = 16384,
+) -> ToolResult:
+    """Reassembled text of one stream. Only when the user allowed content."""
+    if not ctx.session.content_allowed:
+        return _error(
+            "content_disabled",
+            hint="El usuario no ha activado «permitir contenido de los paquetes». Pídeselo si lo necesitas y explica que puede contener credenciales.",
+        )
+    if protocol not in ("tcp", "udp"):
+        return _error("unsupported_protocol", protocols=["tcp", "udp"])
+    if direction not in _DIRECTIONS:
+        return _error("invalid_input", message="direction must be one of %s" % ", ".join(_DIRECTIONS))
+    max_bytes = max(256, min(int(max_bytes), 65536))
+    try:
+        text = run_tshark(["-r", ctx.pcap_path, "-q", "-z", "follow,%s,ascii,%d" % (protocol, int(stream_id))])
+    except ToolError as exc:
+        return _error("tool_failed", message=str(exc))
+    parsed = stats_parse.parse_follow(text)
+    if "a" not in parsed["nodes"]:
+        return _error("stream_not_found", stream_id=int(stream_id), protocol=protocol)
+    pieces = []
+    for chunk in parsed["chunks"]:
+        if direction != "both" and chunk["direction"] != direction:
+            continue
+        pieces.append("--- %s ---\n%s" % (chunk["direction"], chunk["text"]))
+    full = mask_sensitive("\n".join(pieces))
+    data = full.encode("utf-8")
+    truncated = len(data) > max_bytes
+    if truncated:
+        full = data[:max_bytes].decode("utf-8", "ignore")
+    return ToolResult(
+        content={
+            "stream_id": int(stream_id), "protocol": protocol, "nodes": parsed["nodes"],
+            "text": full, "bytes_returned": len(full.encode("utf-8")), "truncated": truncated,
+        },
+        truncated=truncated,
+    )
+
+
+# ---- protocol_reference ------------------------------------------------------
+REFERENCE_TOPICS = ("tcp_analysis", "icmp", "tls", "dns", "dhcp", "vpn", "pmtud", "rtt_window")
+_REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference")
+
+
+def protocol_reference(topic: str) -> ToolResult:
+    """Curated notes so the model does not improvise protocol semantics."""
+    if topic not in REFERENCE_TOPICS:
+        return _error("unknown_topic", topics=list(REFERENCE_TOPICS))
+    with open(os.path.join(_REFERENCE_DIR, topic + ".md"), "r", encoding="utf-8") as handle:
+        return ToolResult(content={"topic": topic, "text": handle.read()})

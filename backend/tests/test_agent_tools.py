@@ -232,3 +232,36 @@ def test_stream_detail_on_sample(ctx):
     assert r1.content["metrics"]["close"]["type"] == "rst"
     assert r1.content["metrics"]["handshake_rtt_ms"] is None
     assert stream_detail(ctx, 999).is_error and stream_detail(ctx, 0, protocol="sctp").is_error
+
+
+# ---- follow_stream, masking, protocol_reference ------------------------------------
+from app.agent.masking import mask_sensitive  # noqa: E402
+from app.agent.tools import REFERENCE_TOPICS, follow_stream, protocol_reference  # noqa: E402
+
+
+def test_mask_sensitive():
+    raw = ("GET /login?user=bob&password=hunter2 HTTP/1.1\r\nAuthorization: Basic Ym9iOmh1bnRlcjI=\r\n"
+           "Cookie: sid=abc\r\nHost: x\r\n")
+    out = mask_sensitive(raw)
+    assert "hunter2" not in out and "Ym9i" not in out and "sid=abc" not in out and "Host: x" in out
+    assert "password=***" in out and "Authorization: ***" in out
+
+
+@needs_tshark
+def test_follow_stream_requires_content_switch(ctx):
+    r = follow_stream(ctx, 0)
+    assert r.is_error and r.content["error"] == "content_disabled"
+    ctx.session.content_allowed = True
+    r = follow_stream(ctx, 0)
+    assert not r.is_error and "GET / HTTP/1.1" in r.content["text"]
+    assert r.content["nodes"]["b"] == "10.0.0.2:80"
+    # stream 3 (:8080) carries a 5 KB download; stream 0 is smaller than the 256 B floor
+    small = follow_stream(ctx, 3, max_bytes=256)
+    assert small.content["truncated"] is True and small.content["bytes_returned"] <= 256
+
+
+def test_protocol_reference_topics():
+    for topic in REFERENCE_TOPICS:
+        r = protocol_reference(topic)
+        assert not r.is_error and len(r.content["text"]) > 200
+    assert protocol_reference("quantum").is_error
