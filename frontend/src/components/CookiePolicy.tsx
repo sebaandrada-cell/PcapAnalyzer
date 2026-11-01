@@ -47,7 +47,9 @@ export default function CookiePolicy() {
       <h2>{t('cookies.deleteTitle')}</h2>
       <p>{t('cookies.delete')}</p>
       <h2>{t('cookies.contactTitle')}</h2>
-      <p>{t('cookies.contact')}</p>
+      <p>
+        {t('cookies.contact')} <a href="#contacto">{t('contact.link')}</a>
+      </p>
     </main>
   )
 }

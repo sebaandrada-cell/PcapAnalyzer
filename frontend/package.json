@@ -7,7 +7,7 @@
     "dev": "vite --configLoader runner",
     "build": "tsc -b && vite build --configLoader runner",
     "lint": "oxlint",
-    "test": "node --test src/*.test.ts",
+    "test": "node --test src/*.test.ts api/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
