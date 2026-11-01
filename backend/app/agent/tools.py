@@ -189,6 +189,8 @@ def statistics(
         spec = base + (",%s" % display_filter if display_filter else "")
     try:
         text = run_tshark(["-r", ctx.pcap_path, "-q", "-z", spec])
+    except ToolTimeout:
+        raise  # execute_tool reports timeouts distinctly
     except ToolError as exc:
         return _error("tool_failed", message=str(exc))
     rows = parser(text)
@@ -248,6 +250,8 @@ def stream_detail(ctx: ToolContext, stream_id: int, protocol: str = "tcp") -> To
         args += ["-e", name]
     try:
         out = run_tshark(args)
+    except ToolTimeout:
+        raise  # execute_tool reports timeouts distinctly
     except ToolError as exc:
         return _error("tool_failed", message=str(exc))
     packets: List[StreamPacket] = []
@@ -316,6 +320,8 @@ def follow_stream(
     max_bytes = max(256, min(int(max_bytes), 65536))
     try:
         text = run_tshark(["-r", ctx.pcap_path, "-q", "-z", "follow,%s,ascii,%d" % (protocol, int(stream_id))])
+    except ToolTimeout:
+        raise  # execute_tool reports timeouts distinctly
     except ToolError as exc:
         return _error("tool_failed", message=str(exc))
     parsed = stats_parse.parse_follow(text)
