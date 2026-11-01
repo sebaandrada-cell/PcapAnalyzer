@@ -103,7 +103,7 @@ El botón «Continuar con Google» solo aparece con `VITE_GOOGLE_LOGIN=1`. Actí
 configurar el proveedor, o el botón daría error.
 
 1. En [Google Cloud](https://console.cloud.google.com/) crea un cliente OAuth «Aplicación web».
-   - Orígenes de JavaScript autorizados: la URL de la web (p. ej. `https://pcap-analyzer-seven.vercel.app`).
+   - Orígenes de JavaScript autorizados: la URL de tu web (p. ej. `https://tu-dominio.example`).
    - URI de redirección autorizado: `https://<ref-del-proyecto>.supabase.co/auth/v1/callback`.
 2. En Supabase → Authentication → Sign In / Providers → Google: activa, pega el Client ID y el
    Client Secret y guarda. En Authentication → URL Configuration, pon la URL de la web como
