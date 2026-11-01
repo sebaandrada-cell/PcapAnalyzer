@@ -6,6 +6,7 @@ optional AI diagnosis) using reportlab — no system dependencies.
 from __future__ import annotations
 
 import html
+import re
 from datetime import datetime
 from io import BytesIO
 from typing import List, Optional
@@ -71,6 +72,8 @@ def _styles():
                                textColor=_MUTED, spaceAfter=6 * mm),
         "h2": ParagraphStyle("h2", parent=base["Heading2"], fontSize=13,
                              textColor=_INK, spaceBefore=6 * mm, spaceAfter=2 * mm),
+        "h3": ParagraphStyle("h3", parent=base["Heading3"], fontSize=11,
+                             textColor=_INK, spaceBefore=4 * mm, spaceAfter=1.5 * mm),
         "body": ParagraphStyle("body", parent=base["Normal"], fontSize=9.5,
                                textColor=_INK, leading=13),
         "detail": ParagraphStyle("detail", parent=base["Normal"], fontSize=9,
@@ -95,6 +98,60 @@ def _table(data: List[List[object]], col_widths=None) -> Table:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     return table
+
+
+_PKT_RE = re.compile(r"\[\[pkt:\s*(\d+)(?:\s*[-–]\s*(\d+))?\s*\]\]")
+_FILTER_RE = re.compile(r"\[\[filter:\s*([^\]]+?)\s*\]\]")
+
+
+def _inline_markup(raw: str) -> str:
+    """Escape the model's text, then turn its light markup into Paragraph tags."""
+    # Evidence marks are replaced on the ESCAPED text so a filter cannot inject tags.
+    text = _esc(raw)
+    text = _PKT_RE.sub(
+        lambda m: ("paquetes %s–%s" % (m.group(1), m.group(2))) if m.group(2) else "paquete %s" % m.group(1),
+        text,
+    )
+    text = _FILTER_RE.sub(lambda m: '<font face="Courier">%s</font>' % m.group(1), text)
+    parts = text.split("**")
+    text = "".join("<b>%s</b>" % part if i % 2 == 1 else part for i, part in enumerate(parts))
+    text = re.sub(r"`([^`]+)`", r'<font face="Courier">\1</font>', text)
+    return text
+
+
+def _investigation_flowables(text: str, styles) -> List[object]:
+    """The agent's report: headings, bullets, paragraphs, notes and evidence marks."""
+    flow: List[object] = []
+    paragraph: List[str] = []
+
+    def flush() -> None:
+        if paragraph:
+            joined = " ".join(paragraph)
+            note = re.match(r"^_\((.*)\)_$", joined) or re.match(r"^_(.*)_$", joined)
+            body = "<i>%s</i>" % _inline_markup(note.group(1)) if note else _inline_markup(joined)
+            flow.append(Paragraph(body, styles["body"]))
+            flow.append(Spacer(1, 2 * mm))
+            paragraph.clear()
+
+    for raw in text.replace("\r\n", "\n").split("\n"):
+        line = raw.strip()
+        heading = re.match(r"^(#{1,6})\s+(.*)$", line)
+        bullet = re.match(r"^[-*•]\s+(.*)$", line)
+        if heading:
+            flush()
+            style = styles["h3"] if len(heading.group(1)) > 2 else styles["h2"]
+            flow.append(Paragraph(_inline_markup(heading.group(2)), style))
+        elif bullet:
+            flush()
+            flow.append(Paragraph("• " + _inline_markup(bullet.group(1)), styles["body"]))
+        elif line == "":
+            flush()
+        elif line.startswith("```"):
+            continue
+        else:
+            paragraph.append(line)
+    flush()
+    return flow
 
 
 def _diagnosis_paragraphs(diagnosis: str, styles) -> List[Paragraph]:
@@ -158,7 +215,10 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
             ))
             flow.append(Paragraph(_esc(issue.detail), styles["detail"]))
 
-    if diagnosis:
+    if diagnosis and re.search(r"(?m)^#{1,6}\s", diagnosis):
+        flow.append(Paragraph("Investigación asistida por IA", styles["h2"]))
+        flow.extend(_investigation_flowables(diagnosis, styles))
+    elif diagnosis:
         flow.append(Paragraph("Diagnóstico asistido (IA)", styles["h2"]))
         flow.extend(_diagnosis_paragraphs(diagnosis, styles))
 
