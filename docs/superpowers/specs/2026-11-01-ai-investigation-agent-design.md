@@ -66,6 +66,10 @@ repite lo que ya dicen los detectores.
   archivo lo siguen limitando `MAX_UPLOAD_MB` y `MAX_DECOMPRESSED_MB` antes de guardar nada.
 - `SESSIONS_ENABLED` (por defecto `1`) permite desactivar todo el subsistema; con `0` la
   app se comporta como hoy (sin chat ni informe de IA investigado).
+- **Modo Supabase / cola compartida (versión alojada):** el análisis corre en el proceso
+  `app.worker`, distinto del que sirve la API, así que el pcap nunca está donde se atiende el
+  chat. En ese modo no se crean sesiones (`session: null` en la respuesta) y la investigación
+  interactiva es una función del producto self-hosted. La demo pública no cambia.
 
 ### 2.3 Estado por sesión
 
