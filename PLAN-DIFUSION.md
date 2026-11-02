@@ -1,6 +1,6 @@
 # Plan de difusión — PcapAnalyzer (v2 · 24-oct-2026)
 
-**Producto:** PcapAnalyzer 1.2.0 · descarga self-hosted · 5 € pago único
+**Producto:** PcapAnalyzer 1.3.0 · descarga self-hosted · 5 € pago único
 **Compra:** https://sebaandrada6.gumroad.com/l/hspgx
 **Landing (ES/EN, pública):** https://claude.ai/artifact/NAX5Yw8wfuP86odEKtS7uv
 **Público:** sysadmins, MSPs y NOC de primer nivel. Gente que ya usa Wireshark y no
@@ -12,9 +12,9 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
-| Paquete 1.2.0 en Gumroad (18 detectores, filtros estilo Wireshark), sin secretos ni datos internos | ✔ (`scripts/build-release.sh`) |
+| Paquete 1.3.0 (investigación con IA con herramientas sobre la captura, 18 detectores, filtros estilo Wireshark), sin secretos ni datos internos | ☐ construido, pendiente de subir a Gumroad con OK del dueño |
 | Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
-| `docker compose` probado de punta a punta (19 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
+| `docker compose` probado de punta a punta (21 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
 | Landing bilingüe con el comando correcto (`./start.sh`) | ✔ versión 7 |
 | Ficha de Gumroad alineada con el producto | ✔ |
 | **Demo sin pagar ni registrarse** (https://pcap-analyzer-seven.vercel.app/#demo) | ✔ en producción, sin llamadas al backend |
@@ -108,9 +108,9 @@ Qué hace:
 - Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK
   duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación,
   errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
-- Diagnóstico con IA: qué pasa, causa probable y siguiente paso. Usa tu propia clave de
+- Investigación con IA que aplica filtros reales y mira los flujos, con evidencia clicable y chat de seguimiento. Usa tu propia clave de
   Anthropic; sin clave hay un modo demo.
-- Escribes la consulta en lenguaje natural y la traduce a un filtro de Wireshark.
+- Filtros de visualización estilo Wireshark en la lista de paquetes.
 - Informe PDF, interfaz en español e inglés, modo claro y oscuro.
 
 Lo importante: se ejecuta en tu propia máquina con Docker (./start.sh). Las capturas,
@@ -138,9 +138,9 @@ why, and what to check next.
 - 18 detectors: firewall blocks (SYN→RST), retransmissions, duplicate ACKs, loss and
   reordering, zero/full window, PMTUD black holes, IP fragmentation, ICMP errors,
   unanswered/slow DNS, TLS handshake failures, VPN tunnel problems, duplicate IPs.
-- AI diagnosis (what's happening / probable cause / next step). You bring your own
+- AI investigation with tools over the capture (real filters, stream detail, statistics), evidence you can click and a follow-up chat. You bring your own
   Anthropic key; without one it runs a demo mode with simulated output.
-- Natural-language query → Wireshark display filter.
+- Wireshark-style display filters on the packet list.
 - Wireshark-style views, PDF report, EN/ES UI, light/dark.
 
 It runs on your machine (docker compose, one script). Captures are analyzed and

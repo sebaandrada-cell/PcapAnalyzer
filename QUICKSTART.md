@@ -61,11 +61,24 @@ Edita `.env` y pon en `API_TOKENS=` una cadena aleatoria de 32 o más caracteres
 docker compose up --build
 ```
 
-## Diagnóstico con IA
+## Investigación con IA
 
-Por defecto la app arranca en **modo demo**: el diagnóstico y la consulta en
-lenguaje natural se generan a partir del propio análisis, sin coste y sin clave, y
-aparecen marcados «(modo demo)». Sirve para probar la interfaz y el flujo completo.
+Al analizar una captura, la IA la **investiga** como lo haría un ingeniero con
+Wireshark: dispone de herramientas que el backend ejecuta sobre el pcap (filtros
+reales de Wireshark, detalle de flujos con RTT y huecos, estadísticas, referencia de
+protocolos) y entrega un informe en el que cada afirmación lleva su evidencia: números
+de paquete y filtros que puedes aplicar con un clic. Después puedes preguntarle lo que
+quieras sobre esa captura.
+
+Para eso la captura se conserva **cifrada en tu propia máquina** mientras dura la
+sesión (60 minutos de inactividad; botón «Borrar captura ahora» para antes). La IA
+solo ve lo que devuelven sus herramientas; el contenido de los paquetes solo si
+activas el interruptor «Permitir contenido» en esa sesión. Lo que la IA lee viaja a
+la API de Anthropic; el pcap nunca.
+
+Por defecto la app arranca en **modo demo**: el informe se genera a partir del propio
+análisis, sin coste y sin clave, y el chat te indica cómo activar la IA. Sirve para
+probar la interfaz y el flujo completo.
 
 Para usar el **modelo de IA real**, edita `.env`:
 
@@ -75,9 +88,11 @@ LLM_DEMO=0
 ```
 
 y reinicia (`Ctrl+C` y `./start.sh`). **Importante:** mientras `LLM_DEMO=1` el modo
-demo tiene prioridad sobre tu clave, así que hay que ponerlo a `0`. Coste
-orientativo: cada diagnóstico ~0,05–0,10 € con el modelo por defecto
-(`claude-opus-5-5`); puedes usar uno más barato con `LLM_MODEL=claude-sonnet-5-5`.
+demo tiene prioridad sobre tu clave, así que hay que ponerlo a `0`. Coste orientativo
+con el modelo por defecto (`claude-opus-5-5`): la investigación inicial 0,20–0,80 € y
+cada pregunta 0,05–0,25 €, según la captura; la barra de sesión muestra el coste
+aproximado acumulado. Puedes usar un modelo más barato con `LLM_MODEL=claude-sonnet-5-5`.
+Hay topes duros por pregunta, por sesión y por día (ver tabla).
 
 ## Ajustes útiles (variables de entorno)
 
@@ -89,6 +104,10 @@ Puedes ponerlas en el `.env` de la raíz:
 | `LLM_DEMO` | `1` | `1` = IA simulada; `0` = IA real (necesita clave) |
 | `ANTHROPIC_API_KEY` | *(vacío)* | Clave para el diagnóstico con IA real |
 | `LLM_MODEL` | `claude-opus-5-5` | Modelo de IA a usar |
+| `SESSION_TTL_MINUTES` | `60` | Minutos de inactividad hasta borrar la captura cifrada |
+| `AGENT_MAX_TOOL_CALLS` | `25` | Consultas a la captura por pregunta |
+| `SESSION_MAX_TOKENS` | `2000000` | Tokens máximos por sesión |
+| `LLM_MAX_CALLS_PER_DAY` | `20` | Preguntas a la IA por día y token |
 | `PCAPANALYZER_PORT` | `8080` | Puerto de la interfaz web |
 | `MAX_UPLOAD_MB` | `200` | Tamaño máximo de subida |
 | `ANALYZE_WORKERS` | `2` | Análisis en paralelo para capturas grandes |
@@ -164,11 +183,22 @@ password manager can generate one). Then:
 docker compose up --build
 ```
 
-## AI diagnosis
+## AI investigation
 
-By default the app starts in **demo mode**: the diagnosis and the natural-language
-query are generated from the analysis itself, at no cost and with no key, and are
-marked "(modo demo)". It is meant for trying the interface and the full flow.
+When you analyze a capture, the AI **investigates** it the way an engineer would with
+Wireshark: it has tools the backend runs on the pcap (real Wireshark display filters,
+per-stream detail with RTT and gaps, statistics, protocol reference) and writes a
+report where every claim carries its evidence: packet numbers and filters you apply
+with one click. Then you can ask it anything about that capture.
+
+For that, the capture is kept **encrypted on your own machine** while the session
+lasts (60 minutes of inactivity; "Delete capture now" ends it earlier). The AI only
+sees what its tools return; packet content only if you enable "Allow packet content"
+for that session. What the AI reads goes to the Anthropic API; the pcap never does.
+
+By default the app starts in **demo mode**: the report is generated from the analysis
+itself, at no cost and with no key, and the chat tells you how to enable the AI. It is
+meant for trying the interface and the full flow.
 
 For the **real AI model**, edit `.env`:
 
@@ -178,9 +208,11 @@ LLM_DEMO=0
 ```
 
 and restart (`Ctrl+C`, then `./start.sh`). **Important:** while `LLM_DEMO=1`, demo
-mode takes priority over your key, so it must be set to `0`. Roughly ~0.05–0.10 €
-per diagnosis with the default model; use `LLM_MODEL=claude-sonnet-5-5` for a
-cheaper one.
+mode takes priority over your key, so it must be set to `0`. Rough cost with the
+default model (`claude-opus-5-5`): €0.20–0.80 for the initial investigation and
+€0.05–0.25 per question, depending on the capture; the session bar shows the
+accumulated estimate. Use `LLM_MODEL=claude-sonnet-5-5` for a cheaper model. Hard caps
+apply per question, per session and per day (see the table).
 
 ## Troubleshooting
 

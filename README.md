@@ -144,7 +144,7 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 
 ### Qué incluye el dashboard (Fase 2)
 
-- Cabecera con metadatos del archivo y barra de consulta en lenguaje natural.
+- Cabecera con metadatos del archivo y, debajo, el **panel de investigación con IA** (informe automático en streaming, chat de seguimiento, barra de sesión con cuenta atrás, interruptor de contenido, coste aproximado y borrado).
 - Tarjetas de métricas: paquetes, duración, conversaciones y problemas detectados.
 - Distribución de protocolos (barras horizontales) y top talkers con marca ⚠ en hosts implicados en issues, más túneles VPN detectados.
 - Gráfico temporal (Recharts): paquetes/s en azul y retransmisiones/s en rojo, con tooltip. La serie se mantiene dispersa para evitar crear un punto por cada segundo de capturas largas.
@@ -156,7 +156,7 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 - **Sesiones TLS**: versión, cipher, SNI y alerta por stream. Todo esto también aparece en el informe PDF.
 - Lista de problemas con badges de severidad (Crítico/Aviso/Info).
 - Drill-down: clic en un issue con conversación asociada o en un top talker abre el detalle de la conversación TCP (bytes por sentido, retransmisiones, MSS, RTT de handshake, eventos window 0 e issues relacionados), con un **diagrama de flujo** (ladder diagram estilo Wireshark) del intercambio de paquetes entre los dos extremos.
-- Panel "Diagnóstico asistido" y barra de consulta en lenguaje natural conectados a la capa IA. Las conversaciones e incidencias devueltas por la consulta filtran la lista de paquetes muestreada y resaltan las incidencias relacionadas.
+- Las marcas de evidencia del informe (`[[pkt: N]]`, `[[filter: …]]`) se muestran como botones: «Ver paquetes» aplica el filtro en la lista local y un número de paquete salta a su fila; si el filtro usa campos que la lista no conoce, se ofrece solo copiarlo para Wireshark.
 - **Cobertura OSI explícita**: una matriz explica las señales detectables y las limitaciones de cada capa, incluida la imposibilidad de inferir estado físico de capa 1 únicamente desde un pcap.
 - Aviso visible cuando un límite de memoria recorta secciones del análisis.
 - **Modo claro/oscuro e idioma (ES/EN)** con toggles en la barra de configuración (arriba a la derecha); la preferencia se guarda en el navegador. En inglés, el diagnóstico y las consultas de IA también responden en inglés. Nota: el texto de los problemas autodetectados lo generan los detectores del backend y por ahora se muestra siempre en español.
@@ -164,10 +164,10 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 
 ### Capa IA (Fase 3)
 
-Dos endpoints que envían a la Anthropic API **solo el resumen JSON del análisis** (recortado a un máximo de issues/conversaciones), **nunca la captura**. El resumen sí puede incluir IPs, nombres de host, DNS y el nombre del archivo. No actives la IA externa sin autorización para compartir esos metadatos; la captura puede contener información sensible.
+La interfaz usa la investigación interactiva (sección siguiente). Siguen disponibles dos endpoints más simples que envían a la Anthropic API **solo el resumen JSON del análisis** (recortado a un máximo de issues/conversaciones), **nunca la captura**. El resumen sí puede incluir IPs, nombres de host, DNS y el nombre del archivo. No actives la IA externa sin autorización para compartir esos metadatos; la captura puede contener información sensible.
 
-- `POST /diagnose` — diagnóstico narrativo en español: *qué está pasando, causa probable y siguiente paso recomendado*. En la UI: botón "Generar diagnóstico" del panel inferior.
-- `POST /query` — traduce una pregunta en lenguaje natural ("conexiones fallidas hacia el servidor de correo") a un **display filter de Wireshark**, con explicación y la lista de conversaciones/issues relacionadas que existen en los datos analizados. La interfaz aplica esa selección a la lista local de paquetes muestreada; el filtro no se vuelve a ejecutar contra el pcap.
+- `POST /diagnose` — diagnóstico narrativo: *qué está pasando, causa probable y siguiente paso recomendado* (ya no se usa desde la interfaz; lo sustituye la investigación).
+- `POST /query` — traduce una pregunta en lenguaje natural ("conexiones fallidas hacia el servidor de correo") a un **display filter de Wireshark**, con explicación y la lista de conversaciones/issues relacionadas que existen en los datos analizados. Tampoco se usa desde la interfaz desde la 1.3.0; se mantiene para integraciones.
 
 **Configurar la capa IA** — dos opciones:
 
@@ -335,7 +335,7 @@ cd backend
 - `test_detectors.py`: un test unitario por detector sobre estados sintéticos (no requiere tshark).
 - `test_analyze.py`: integración del endpoint contra `tests/fixtures/sample.pcap`, regenerado de forma determinista en cada ejecución por [pcap_builder.py](backend/tests/pcap_builder.py) (paquetes crafteados a mano, sin scapy). El fixture contiene deliberadamente: retransmisiones TCP (25 % de un stream), un SYN→RST inmediato, un zero window, un handshake TLS que termina en `handshake_failure`, consultas DNS rápida / lenta (700 ms) / sin respuesta, un stream con MSS 1240 y agujero negro PMTUD, un handshake de 600 ms, un ICMP Fragmentation Needed, un datagrama fragmentado completo y otro incompleto, ESP unidireccional, IKE sin respuesta e IKE sin ESP posterior, un SERVFAIL, tres NXDOMAIN y una IP duplicada anunciada por dos MACs. Estos tests se saltan automáticamente si tshark no está instalado.
 
-Seguridad: nunca se loguean payloads, el archivo subido se borra tras el análisis, hay límite de tamaño de subida y los strings extraídos de la captura (p. ej. nombres DNS) se sanean antes de incluirse en la respuesta.
+Seguridad: nunca se loguean payloads, el archivo subido se borra tras el análisis (o, con sesiones de investigación, se conserva cifrado con una clave que solo vive en memoria y se borra por inactividad), hay límite de tamaño de subida y los strings extraídos de la captura (p. ej. nombres DNS) se sanean antes de incluirse en la respuesta.
 
 ## Roadmap
 

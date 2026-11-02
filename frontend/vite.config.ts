@@ -13,6 +13,7 @@ export default defineConfig({
       '/query': 'http://127.0.0.1:8000',
       '/report': 'http://127.0.0.1:8000',
       '/jobs': 'http://127.0.0.1:8000',
+      '/sessions': 'http://127.0.0.1:8000',
     },
   },
 })

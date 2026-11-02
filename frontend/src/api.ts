@@ -1,4 +1,5 @@
 // Types mirroring backend/app/models.py — the API contract.
+import { SseParser } from './sse'
 import { supabaseClient } from './supabase'
 
 export type Severity = 'critical' | 'warning' | 'info'
@@ -204,6 +205,19 @@ export interface Issue {
   evidence: Record<string, unknown>
 }
 
+/** Handle of the investigation session the backend keeps for this analysis. */
+export interface SessionInfo {
+  id: string
+  expires_at: number // epoch seconds
+  ttl_minutes: number
+  content_allowed: boolean
+}
+
+export interface SessionStatus extends SessionInfo {
+  usage: Record<string, number>
+  messages: number
+}
+
 export interface Meta {
   engine_version: string
   tshark_version: string
@@ -228,20 +242,8 @@ export interface AnalysisResult {
   expert_info?: ExpertEntry[]
   resolved_names?: ResolvedName[]
   meta: Meta
-}
-
-export interface DiagnoseResponse {
-  diagnosis: string
-  model: string
-  usage: Record<string, number>
-}
-
-export interface QueryResponse {
-  filter: string
-  explanation: string
-  matched_tcp_streams: number[]
-  matched_issue_ids: string[]
-  model: string
+  // null when sessions are disabled or the analysis ran in another process
+  session?: SessionInfo | null
 }
 
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
@@ -338,27 +340,117 @@ export async function exportReport(
   URL.revokeObjectURL(url)
 }
 
-export async function diagnose(
-  analysis: AnalysisResult,
-  lang: 'es' | 'en' = 'es',
-): Promise<DiagnoseResponse> {
-  const response = await fetch(`${API_BASE}/diagnose`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-    body: JSON.stringify({ analysis, lang }),
+
+
+// ---- investigation sessions -------------------------------------------------
+export const INVESTIGATE_SENTINEL = '__investigate__'
+
+export async function getSession(id: string): Promise<SessionStatus> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
   })
-  return parseOrThrow<DiagnoseResponse>(response)
+  return parseOrThrow<SessionStatus>(response)
 }
 
-export async function queryFilter(
-  question: string,
-  analysis: AnalysisResult,
-  lang: 'es' | 'en' = 'es',
-): Promise<QueryResponse> {
-  const response = await fetch(`${API_BASE}/query`, {
-    method: 'POST',
+export async function patchSession(id: string, contentAllowed: boolean): Promise<SessionStatus> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-    body: JSON.stringify({ question, analysis, lang }),
+    body: JSON.stringify({ content_allowed: contentAllowed }),
   })
-  return parseOrThrow<QueryResponse>(response)
+  return parseOrThrow<SessionStatus>(response)
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`No se pudo borrar la sesión (${response.status}).`)
+  }
+}
+
+export interface ChatHandlers {
+  onToolStart(d: { name: string; label: string }): void
+  onToolEnd(d: { name: string; ms: number; is_error: boolean; truncated: boolean }): void
+  onText(delta: string): void
+  onUsage(d: Record<string, number>): void
+  onDone(d: { stop_reason: string; limited: boolean; demo?: boolean }): void
+  onError(d: { code: string; message: string }): void
+}
+
+/** A non-2xx answer before the stream started (404 session, 409 busy, 429 quota, 503 no AI). */
+export class ChatHttpError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+/**
+ * Ask the investigation agent and stream its events. Resolves when the stream
+ * ends; rejects with ChatHttpError before the stream, or with the fetch error
+ * (AbortError included) when the connection drops.
+ */
+export async function chatStream(
+  sessionId: string,
+  message: string,
+  lang: 'es' | 'en',
+  handlers: ChatHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...await authHeaders() },
+    body: JSON.stringify({ message, lang }),
+    signal,
+  })
+  if (!response.ok) {
+    let detail = `Error ${response.status}`
+    try {
+      const body = (await response.json()) as { detail?: string }
+      if (body.detail) detail = body.detail
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ChatHttpError(response.status, detail)
+  }
+  if (!response.body) throw new ChatHttpError(response.status, 'Respuesta sin cuerpo.')
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const parser = new SseParser()
+  const dispatch = (event: string, data: unknown) => {
+    const d = data as Record<string, unknown>
+    switch (event) {
+      case 'tool_start':
+        handlers.onToolStart(d as { name: string; label: string })
+        break
+      case 'tool_end':
+        handlers.onToolEnd(d as { name: string; ms: number; is_error: boolean; truncated: boolean })
+        break
+      case 'text':
+        handlers.onText(String(d.delta ?? ''))
+        break
+      case 'usage':
+        handlers.onUsage(d as Record<string, number>)
+        break
+      case 'done':
+        handlers.onDone(d as { stop_reason: string; limited: boolean; demo?: boolean })
+        break
+      case 'error':
+        handlers.onError(d as { code: string; message: string })
+        break
+      default:
+        break
+    }
+  }
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    for (const ev of parser.push(decoder.decode(value, { stream: true }))) dispatch(ev.event, ev.data)
+  }
+  for (const ev of parser.push(decoder.decode())) dispatch(ev.event, ev.data)
+  for (const ev of parser.flush()) dispatch(ev.event, ev.data)
 }

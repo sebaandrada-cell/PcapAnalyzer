@@ -9,6 +9,8 @@ import type { Lang } from './i18n'
 export interface DemoData {
   analysis: AnalysisResult
   diagnosis: Record<Lang, string>
+  /** Pre-generated investigation report (added in 1.3.0; older demo.json lacks it). */
+  investigation?: Record<Lang, string>
 }
 
 export const DEMO_HASH = '#demo'

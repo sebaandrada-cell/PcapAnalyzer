@@ -50,6 +50,25 @@ FOOTERS = {
 FOOTER_RE = re.compile(r"\n*_\((?:modo demo|demo mode)[^\n]*\)_\s*$", re.IGNORECASE)
 
 
+def _fresh_session(client) -> "str | None":
+    with SAMPLE.open("rb") as fh:
+        response = client.post("/analyze", files={"file": ("sample.pcap", fh, "application/octet-stream")})
+    if response.status_code != 200 or not response.json().get("session"):
+        print("/analyze no devolvió sesión (%s)" % response.status_code, file=sys.stderr)
+        return None
+    return response.json()["session"]["id"]
+
+
+def _sse_text(body: str) -> str:
+    """Concatenate the `text` events of a text/event-stream body."""
+    pieces = []
+    for frame in body.split("\n\n"):
+        lines = frame.split("\n")
+        if len(lines) >= 2 and lines[0] == "event: text" and lines[1].startswith("data: "):
+            pieces.append(json.loads(lines[1][6:])["delta"])
+    return "".join(pieces)
+
+
 def main() -> int:
     if not SAMPLE.is_file():
         print("No existe %s" % SAMPLE, file=sys.stderr)
@@ -66,6 +85,7 @@ def main() -> int:
         analysis = response.json()
 
         diagnosis = {}
+        investigation = {}
         for lang in ("es", "en"):
             reply = client.post("/diagnose", json={"analysis": analysis, "lang": lang})
             if reply.status_code != 200:
@@ -75,10 +95,30 @@ def main() -> int:
             if not FOOTER_RE.search(text):
                 print("Aviso: no se encontró el pie de modo demo en el texto «%s»; se añade el de la demo pública." % lang)
             diagnosis[lang] = FOOTER_RE.sub("", text).rstrip() + "\n\n" + FOOTERS[lang]
+            # The investigation report (demo mode) comes through the chat endpoint,
+            # once per session: analyze again to get a fresh session per language.
+            session_id = _fresh_session(client)
+            if session_id is None:
+                return 1
+            chat = client.post(
+                "/sessions/%s/chat" % session_id,
+                json={"message": "__investigate__", "lang": lang},
+            )
+            if chat.status_code != 200:
+                print("/sessions/chat (%s) → %s: %s" % (lang, chat.status_code, chat.text[:300]), file=sys.stderr)
+                return 1
+            report = _sse_text(chat.text)
+            investigation[lang] = FOOTER_RE.sub("", report).rstrip() + "\n\n" + FOOTERS[lang]
+            client.delete("/sessions/%s" % session_id)
 
+    # The public demo has no backend session behind it.
+    analysis["session"] = None
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
-        json.dumps({"analysis": analysis, "diagnosis": diagnosis}, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(
+            {"analysis": analysis, "diagnosis": diagnosis, "investigation": investigation},
+            ensure_ascii=False, separators=(",", ":"),
+        ),
         encoding="utf-8",
     )
     summary = analysis["summary"]

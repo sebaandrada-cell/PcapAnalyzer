@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AnalysisResult, Issue, QueryResponse, TopTalker } from './api'
-import { ASYNC_THRESHOLD_BYTES, analyzePcap, analyzePcapAsync, queryFilter } from './api'
+import type { AnalysisResult, Issue, TopTalker } from './api'
+import { ASYNC_THRESHOLD_BYTES, analyzePcap, analyzePcapAsync, deleteSession } from './api'
 import CaptureProperties from './components/CaptureProperties'
 import ConversationModal, { type Selection } from './components/ConversationModal'
 import DemoBanner from './components/DemoBanner'
-import DiagnosisPanel from './components/DiagnosisPanel'
 import DnsQueries from './components/DnsQueries'
 import DhcpLeases from './components/DhcpLeases'
 import Header from './components/Header'
@@ -18,7 +17,7 @@ import IssuesList, { issueStreamId } from './components/IssuesList'
 import MetricCards from './components/MetricCards'
 import OsiCoverage from './components/OsiCoverage'
 import ProtocolBars from './components/ProtocolBars'
-import QueryBar from './components/QueryBar'
+import InvestigationPanel from './components/InvestigationPanel'
 import SettingsBar from './components/SettingsBar'
 import TopTalkers from './components/TopTalkers'
 import TrafficChart from './components/TrafficChart'
@@ -41,10 +40,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
-  const [query, setQuery] = useState<QueryResponse | null>(null)
-  const [queryLoading, setQueryLoading] = useState(false)
-  const [queryError, setQueryError] = useState<string | null>(null)
-  const [diagnosis, setDiagnosis] = useState<string | null>(null)
+  const [reportText, setReportText] = useState<string | null>(null)
   const [filterRequest, setFilterRequest] = useState<{ text: string; id: number } | null>(null)
   const names = useMemo(() => nameMap(result?.resolved_names), [result])
 
@@ -61,9 +57,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
   const handleFile = useCallback((file: File) => {
     setAnalyzing(true)
     setError(null)
-    setQuery(null)
-    setQueryError(null)
-    setDiagnosis(null)
+    setReportText(null)
     setFilterRequest(null)
     // Large captures go through the async queue instead of blocking /analyze.
     const analyze = file.size > ASYNC_THRESHOLD_BYTES ? analyzePcapAsync : analyzePcap
@@ -73,27 +67,16 @@ function Dashboard({ demo }: { demo?: DemoData }) {
       .finally(() => setAnalyzing(false))
   }, [])
 
-  const handleQuery = useCallback(
-    (question: string) => {
-      if (!result) return
-      if (demo) {
-        setQueryError(t('demo.queryDisabled'))
-        return
-      }
-      setQueryLoading(true)
-      setQueryError(null)
-      queryFilter(question, result, lang)
-        .then(setQuery)
-        .catch((err: Error) => setQueryError(err.message))
-        .finally(() => setQueryLoading(false))
-    },
-    [result, lang, demo, t],
-  )
-
-  const clearQuery = useCallback(() => {
-    setQuery(null)
-    setQueryError(null)
-  }, [])
+  // "Analizar otra captura": drop the server-side session too (best effort).
+  // The investigation panel deletes it itself before calling back.
+  const resetAll = useCallback((alreadyDeleted = false) => {
+    const sessionId = result?.session?.id
+    if (sessionId && !demo && !alreadyDeleted) deleteSession(sessionId).catch(() => undefined)
+    setResult(null)
+    setSelection(null)
+    setReportText(null)
+    setFilterRequest(null)
+  }, [result, demo])
 
   const handleIssueSelect = useCallback((issue: Issue) => {
     const streamId = issueStreamId(issue)
@@ -112,45 +95,19 @@ function Dashboard({ demo }: { demo?: DemoData }) {
     )
   }
 
-  const matchedStreamIds = query && query.matched_tcp_streams.length > 0
-    ? [
-        ...new Set([
-          ...query.matched_tcp_streams,
-          ...result.issues
-            .filter((issue) => query.matched_issue_ids.includes(issue.id))
-            .map((issue) => issueStreamId(issue))
-            .filter((streamId): streamId is number => streamId !== null),
-        ]),
-      ]
-    : null
-  const visibleIssues =
-    query && query.matched_issue_ids.length > 0
-      ? result.issues.filter((issue) => query.matched_issue_ids.includes(issue.id))
-      : result.issues
-
   return (
     <>
       <SettingsBar />
       {demo && <DemoBanner />}
-      <Header
+      <Header result={result} diagnosis={reportText} demo={Boolean(demo)} onReset={() => resetAll()} />
+      <InvestigationPanel
         result={result}
-        diagnosis={diagnosis}
         demo={Boolean(demo)}
-        onReset={() => {
-          setResult(null)
-          setSelection(null)
-          setQuery(null)
-          setQueryError(null)
-          setDiagnosis(null)
-          setFilterRequest(null)
-        }}
-      />
-      <QueryBar
-        loading={queryLoading}
-        result={query}
-        error={queryError}
-        onSubmit={handleQuery}
-        onClear={clearQuery}
+        demoText={demo?.investigation?.[lang] ?? demo?.diagnosis[lang]}
+        onShowPackets={showPackets}
+        onSelectPacket={(n) => showPackets(`frame.number == ${n}`)}
+        onReportText={setReportText}
+        onSessionDeleted={() => resetAll(true)}
       />
       <MetricCards result={result} />
       {result.meta.truncated_sections.length > 0 && (
@@ -170,8 +127,8 @@ function Dashboard({ demo }: { demo?: DemoData }) {
       <ServiceResponseTimes rows={result.service_response_times} />
       <PacketList
         data={result.packet_list}
-        streamIds={matchedStreamIds}
-        queryFilter={query?.filter ?? null}
+        streamIds={null}
+        queryFilter={null}
         names={names}
         startEpoch={result.summary.start_time_epoch}
         filterRequest={filterRequest}
@@ -185,12 +142,11 @@ function Dashboard({ demo }: { demo?: DemoData }) {
       <DhcpLeases leases={result.dhcp_leases ?? []} />
       <TlsSessions sessions={result.tls_sessions} />
       <IssuesList
-        issues={visibleIssues}
-        highlightedIds={query ? new Set(query.matched_issue_ids) : null}
+        issues={result.issues}
+        highlightedIds={null}
         onSelect={handleIssueSelect}
         onShowPackets={showPackets}
       />
-      <DiagnosisPanel analysis={result} onGenerated={setDiagnosis} demoText={demo?.diagnosis[lang]} />
       <div className="footer-note">
         {t('footer.note', { version: result.meta.engine_version })}
       </div>
