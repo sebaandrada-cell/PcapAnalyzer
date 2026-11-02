@@ -45,6 +45,7 @@ export type Action =
   | { type: 'done'; limited: boolean }
   | { type: 'error'; code: string; message: string }
   | { type: 'interrupted' }
+  | { type: 'stream_end' } // the HTTP stream ended; a turn still streaming was cut
   | { type: 'http_error'; status: number; message: string }
   | { type: 'session'; info: { expires_at: number; content_allowed: boolean } }
   | { type: 'expired' }
@@ -119,6 +120,11 @@ export function reduce(state: PanelState, action: Action): PanelState {
     }
     case 'interrupted':
       return updateLast(state, (turn) => ({ ...turn, streaming: false, interrupted: true }))
+    case 'stream_end': {
+      const last = state.turns[state.turns.length - 1]
+      if (!last || !last.streaming) return state
+      return updateLast(state, (turn) => ({ ...turn, streaming: false, interrupted: true }))
+    }
     case 'http_error': {
       const last = state.turns[state.turns.length - 1]
       if (last && last.question === null && action.status === 409) {
@@ -131,8 +137,20 @@ export function reduce(state: PanelState, action: Action): PanelState {
       }))
       return action.status === 404 ? { ...next, expired: true, blockedReason: 'expired' } : next
     }
-    case 'session':
-      return { ...state, expiresAt: action.info.expires_at, contentAllowed: action.info.content_allowed }
+    case 'session': {
+      // The backend renews the expiry on every request; a refresh that lands in
+      // the future lifts a block the countdown applied too early (clock skew,
+      // a turn that ran past the old deadline). Token caps are not lifted.
+      const alive = action.info.expires_at > Date.now() / 1000
+      const liftExpiry = alive && state.blockedReason === 'expired'
+      return {
+        ...state,
+        expiresAt: action.info.expires_at,
+        contentAllowed: action.info.content_allowed,
+        expired: liftExpiry ? false : state.expired,
+        blockedReason: liftExpiry ? null : state.blockedReason,
+      }
+    }
     case 'expired':
       return { ...state, expired: true, blockedReason: 'expired' }
     case 'reset':

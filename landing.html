@@ -319,7 +319,7 @@
       </div>
       <p class="trust reveal d3">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/></svg>
-        <span data-k="hero.trust">El pcap se analiza y se descarta. Nunca sale de tu equipo.</span>
+        <span data-k="hero.trust">El pcap se analiza en tu equipo, se guarda cifrado solo mientras investigas y luego se borra.</span>
       </p>
     </div>
 
@@ -373,7 +373,7 @@
       <div class="card"><div class="k" data-k="card2.k">Investigación IA</div><h3 data-k="card2.h3">Veredicto · hallazgos · causa · qué hacer</h3><p data-k="card2.p">La IA investiga la captura con herramientas (filtros reales, detalle de flujos, estadísticas) y cada afirmación trae su evidencia: paquetes y filtros que aplicas con un clic. La captura se queda cifrada en tu máquina; la IA solo ve lo que devuelven sus herramientas.</p></div>
       <div class="card"><div class="k" data-k="card3.k">Chat sobre la captura</div><h3 data-k="card3.h3">«¿Por qué se para el flujo 7 en el segundo 3?»</h3><p data-k="card3.p">Preguntas de seguimiento con respuesta investigada, no inventada: la IA vuelve a mirar los paquetes y te dice qué prueba la captura y qué no.</p></div>
       <div class="card"><div class="k" data-k="card4.k">Vistas Wireshark</div><h3 data-k="card4.h3">Paquetes, HTTP, DNS, TLS, SRT</h3><p data-k="card4.p">Lista de paquetes con filtros y orden, tablas de protocolo, tiempos de respuesta y un diagrama de flujo por conversación.</p></div>
-      <div class="card"><div class="k" data-k="card5.k">Privado por diseño</div><h3 data-k="card5.h3">Corre en tu máquina</h3><p data-k="card5.p">El archivo se procesa localmente y se borra tras el análisis. Ideal para MSP y NOC con datos sensibles. Docker, un comando.</p></div>
+      <div class="card"><div class="k" data-k="card5.k">Privado por diseño</div><h3 data-k="card5.h3">Corre en tu máquina</h3><p data-k="card5.p">El archivo se procesa en tu máquina y solo se conserva cifrado mientras dura la sesión de investigación (60 min sin actividad); después se borra. La IA recibe únicamente lo que devuelven sus herramientas: metadatos, y contenido de paquetes solo si lo activas. Ideal para MSP y NOC con datos sensibles. Docker, un comando.</p></div>
       <div class="card"><div class="k" data-k="card6.k">Listo para entregar</div><h3 data-k="card6.h3">Informe PDF + bilingüe</h3><p data-k="card6.p">Exporta un informe en PDF para el cliente. Interfaz en español o inglés, tema claro u oscuro, a un clic.</p></div>
     </div>
   </div>
@@ -417,7 +417,7 @@
     </div>
     <ul>
       <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="priv.li1">El archivo se analiza y se borra al terminar. No se almacena.</span></li>
-      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="priv.li2">La IA es opcional y recibe solo un resumen JSON, nunca los paquetes.</span></li>
+      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="priv.li2">La IA es opcional: recibe lo que devuelven sus herramientas (metadatos; contenido de paquetes solo si activas el interruptor), nunca el pcap.</span></li>
       <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="priv.li3">Usas tu propia clave de API — o el modo demo, sin clave alguna.</span></li>
       <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="priv.li4">Sin telemetría, sin cuentas, sin dependencias externas para el análisis.</span></li>
     </ul>
@@ -453,7 +453,7 @@
     <div class="faq">
       <details open><summary data-k="faq.q1">¿Necesito una clave de API para usarlo?</summary><p data-k="faq.a1">No es obligatoria. Sin clave, la app funciona con un modo demo que simula el diagnóstico a partir del propio análisis. Si quieres la IA real, pones tu propia clave de Anthropic (el coste va a tu cuenta: unos 0,20–0,80&nbsp;€ por investigación inicial y 0,05–0,25&nbsp;€ por pregunta, con topes configurables).</p></details>
       <details><summary data-k="faq.q2">¿Qué necesito para ejecutarlo?</summary><p data-k="faq.a2">Docker y Docker Compose. Un solo comando (<span style="font-family:var(--mono)">./start.sh</span>; en Windows, desde Git Bash o WSL) lo levanta todo y te da tu token de acceso. Abres <span style="font-family:var(--mono)">localhost:8080</span>, lo pegas y listo. Incluye una guía de inicio paso a paso.</p></details>
-      <details><summary data-k="faq.q3">¿Mis capturas son privadas?</summary><p data-k="faq.a3">Sí. Todo el análisis ocurre en tu máquina y el archivo se descarta al terminar. Solo si activas la IA se envía un resumen JSON de métricas — nunca los paquetes ni el pcap.</p></details>
+      <details><summary data-k="faq.q3">¿Mis capturas son privadas?</summary><p data-k="faq.a3">Sí. Todo el análisis ocurre en tu máquina. La captura se guarda cifrada solo mientras dura la sesión de investigación (60 minutos sin actividad, o hasta que pulses «Borrar captura ahora») y después se elimina. Solo si activas la IA se envían a Anthropic los resultados de sus herramientas: metadatos de los paquetes y, únicamente si tú lo permites en esa sesión, el contenido de los flujos. El pcap nunca sale de tu equipo.</p></details>
       <details><summary data-k="faq.q4">¿Recibo actualizaciones?</summary><p data-k="faq.a4">La descarga incluye el código completo, así que es tuyo para ejecutar y adaptar. Las mejoras futuras se publican como nuevas versiones.</p></details>
     </div>
   </div>
@@ -530,7 +530,7 @@
       "hero.ctaBuy": 'Buy & download · <span class="price-tag">€5</span>',
       "hero.ctaDemo": "Try the demo, no sign-up",
       "hero.ctaHow": "See how it works",
-      "hero.trust": "The pcap is analyzed and discarded. It never leaves your machine.",
+      "hero.trust": "The pcap is analyzed on your machine, kept encrypted only while you investigate, then deleted.",
 
       "term.head": "sample.pcap · 56 packets · 18 problems",
       "term.chip": "● Critical",
@@ -564,7 +564,7 @@
       "card4.p": "Packet list with filters and sorting, protocol tables, response times and a per-conversation flow diagram.",
       "card5.k": "Private by design",
       "card5.h3": "Runs on your machine",
-      "card5.p": "The file is processed locally and deleted after analysis. Ideal for MSPs and NOCs with sensitive data. Docker, one command.",
+      "card5.p": "The file is processed on your machine and kept encrypted only while the investigation session lasts (60 min idle); then it is deleted. The AI receives only what its tools return: metadata, and packet content only if you enable it. Ideal for MSPs and NOCs with sensitive data. Docker, one command.",
       "card6.k": "Ready to hand off",
       "card6.h3": "PDF report + bilingual",
       "card6.p": "Export a PDF report for the client. Interface in Spanish or English, light or dark theme, one click.",
@@ -586,7 +586,7 @@
       "priv.h2": "Your captures never leave your machine.",
       "priv.p": "A pcap can contain credentials, internal hosts and your clients' data. That is why PcapAnalyzer runs on your own infrastructure, not someone else's cloud.",
       "priv.li1": "The file is analyzed and deleted when done. It is not stored.",
-      "priv.li2": "AI is optional and receives only a JSON summary, never the packets.",
+      "priv.li2": "AI is optional: it receives what its tools return (metadata; packet content only if you flip the switch), never the pcap.",
       "priv.li3": "You use your own API key — or the demo mode, with no key at all.",
       "priv.li4": "No telemetry, no accounts, no external dependencies for the analysis.",
 
@@ -610,7 +610,7 @@
       "faq.q2": "What do I need to run it?",
       "faq.a2": 'Docker and Docker Compose. A single command (<span style="font-family:var(--mono)">./start.sh</span>; on Windows, from Git Bash or WSL) brings everything up and gives you your access token. Open <span style="font-family:var(--mono)">localhost:8080</span>, paste it and you are done. A step-by-step guide is included.',
       "faq.q3": "Are my captures private?",
-      "faq.a3": "Yes. All analysis happens on your machine and the file is discarded when done. Only if you enable AI is a JSON metrics summary sent — never the packets or the pcap.",
+      "faq.a3": "Yes. All analysis happens on your machine. The capture is kept encrypted only while the investigation session lasts (60 idle minutes, or until you press “Delete capture now”) and is then removed. Only if you enable AI are its tool results sent to Anthropic: packet metadata and, only if you allow it for that session, stream content. The pcap never leaves your machine.",
       "faq.q4": "Do I get updates?",
       "faq.a4": "The download includes the full source, so it is yours to run and adapt. Future improvements are published as new versions.",
 

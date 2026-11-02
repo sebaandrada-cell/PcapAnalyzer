@@ -452,7 +452,7 @@ const es: Dict = {
     ok: 'Entendido',
   },
   footer: {
-    note: 'PcapAnalyzer · motor {version} · el archivo se analiza y se descarta, no se almacena.',
+    note: 'PcapAnalyzer · motor {version} · la captura se conserva cifrada en esta máquina solo mientras dura la sesión de investigación; después se borra.',
   },
   boundary: {
     title: 'Algo ha fallado',
@@ -907,7 +907,7 @@ const en: Dict = {
     ok: 'Got it',
   },
   footer: {
-    note: 'PcapAnalyzer · engine {version} · the file is analyzed and discarded, not stored.',
+    note: 'PcapAnalyzer · engine {version} · the capture stays encrypted on this machine only while the investigation session lasts; then it is deleted.',
   },
   boundary: {
     title: 'Something went wrong',

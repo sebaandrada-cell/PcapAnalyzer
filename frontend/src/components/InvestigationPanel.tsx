@@ -95,6 +95,7 @@ export default function InvestigationPanel({
           },
           onError: (d) => dispatch({ type: 'error', code: d.code, message: d.message }),
         }, controller.signal)
+        dispatch({ type: 'stream_end' }) // no-op when done/error already closed the turn
       } catch (err) {
         if (err instanceof ChatHttpError) dispatch({ type: 'http_error', status: err.status, message: err.message })
         else dispatch({ type: 'interrupted' })
@@ -235,6 +236,7 @@ export default function InvestigationPanel({
         totalTokens={totalTokens}
         onDelete={remove}
         onExpired={() => dispatch({ type: 'expired' })}
+        streaming={streaming}
         demo={demo}
       />
       {demo && demoText !== undefined && (

@@ -112,11 +112,19 @@ def _inline_markup(raw: str) -> str:
         lambda m: ("paquetes %s–%s" % (m.group(1), m.group(2))) if m.group(2) else "paquete %s" % m.group(1),
         text,
     )
-    text = _FILTER_RE.sub(lambda m: '<font face="Courier">%s</font>' % m.group(1), text)
+    # Filters and `code` are kept verbatim: stash them so the bold pass cannot
+    # interleave <b> with <font> (reportlab rejects crossed tags).
+    spans: List[str] = []
+
+    def stash(value: str) -> str:
+        spans.append('<font face="Courier">%s</font>' % value)
+        return "\x00%d\x00" % (len(spans) - 1)
+
+    text = _FILTER_RE.sub(lambda m: stash(m.group(1)), text)
+    text = re.sub(r"`([^`]+)`", lambda m: stash(m.group(1)), text)
     parts = text.split("**")
     text = "".join("<b>%s</b>" % part if i % 2 == 1 else part for i, part in enumerate(parts))
-    text = re.sub(r"`([^`]+)`", r'<font face="Courier">\1</font>', text)
-    return text
+    return re.sub(r"\x00(\d+)\x00", lambda m: spans[int(m.group(1))], text)
 
 
 def _investigation_flowables(text: str, styles) -> List[object]:
@@ -310,8 +318,8 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
         ))
 
     flow.append(Paragraph(
-        "Informe generado por PcapAnalyzer · la captura se analizó y se descartó, "
-        "no se almacena.",
+        "Informe generado por PcapAnalyzer · la captura se analiza en tu máquina y se "
+        "conserva cifrada solo mientras dura la sesión de investigación; después se borra.",
         styles["footer"],
     ))
 

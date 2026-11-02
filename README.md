@@ -335,7 +335,7 @@ cd backend
 - `test_detectors.py`: un test unitario por detector sobre estados sintéticos (no requiere tshark).
 - `test_analyze.py`: integración del endpoint contra `tests/fixtures/sample.pcap`, regenerado de forma determinista en cada ejecución por [pcap_builder.py](backend/tests/pcap_builder.py) (paquetes crafteados a mano, sin scapy). El fixture contiene deliberadamente: retransmisiones TCP (25 % de un stream), un SYN→RST inmediato, un zero window, un handshake TLS que termina en `handshake_failure`, consultas DNS rápida / lenta (700 ms) / sin respuesta, un stream con MSS 1240 y agujero negro PMTUD, un handshake de 600 ms, un ICMP Fragmentation Needed, un datagrama fragmentado completo y otro incompleto, ESP unidireccional, IKE sin respuesta e IKE sin ESP posterior, un SERVFAIL, tres NXDOMAIN y una IP duplicada anunciada por dos MACs. Estos tests se saltan automáticamente si tshark no está instalado.
 
-Seguridad: nunca se loguean payloads, el archivo subido se borra tras el análisis, hay límite de tamaño de subida y los strings extraídos de la captura (p. ej. nombres DNS) se sanean antes de incluirse en la respuesta.
+Seguridad: nunca se loguean payloads, el archivo subido se borra tras el análisis (o, con sesiones de investigación, se conserva cifrado con una clave que solo vive en memoria y se borra por inactividad), hay límite de tamaño de subida y los strings extraídos de la captura (p. ej. nombres DNS) se sanean antes de incluirse en la respuesta.
 
 ## Roadmap
 

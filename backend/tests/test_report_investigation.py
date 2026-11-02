@@ -49,3 +49,12 @@ def test_malicious_text_is_escaped(paragraphs):
     joined = "\n".join(paragraphs)
     assert "<script>" not in joined and "&lt;script&gt;" in joined
     assert '<font face="Courier">a&lt;b</font>' in joined
+
+
+def test_markup_inside_filters_and_code_does_not_break_the_pdf(paragraphs):
+    text = "## X\n- a [[filter: a**b || c**d]] y `x **y** z` y **negrita**"
+    pdf = report.build_report(make_analysis(), text)
+    assert pdf[:4] == b"%PDF"
+    joined = "\n".join(paragraphs)
+    assert '<font face="Courier">a**b || c**d</font>' in joined
+    assert '<font face="Courier">x **y** z</font>' in joined and "<b>negrita</b>" in joined

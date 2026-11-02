@@ -11,6 +11,8 @@ interface Props {
   totalTokens: number
   onDelete: () => void
   onExpired: () => void
+  /** A turn in flight renews the session server-side; do not expire the UI meanwhile. */
+  streaming: boolean
   demo: boolean
 }
 
@@ -21,7 +23,7 @@ function mmss(seconds: number): string {
 
 // Countdown to deletion, the content switch (with its warning) and the cost.
 export default function SessionBar({
-  expiresAt, expired, contentAllowed, onToggleContent, costUsd, totalTokens, onDelete, onExpired, demo,
+  expiresAt, expired, contentAllowed, onToggleContent, costUsd, totalTokens, onDelete, onExpired, streaming, demo,
 }: Props) {
   const { t } = useSettings()
   const [now, setNow] = useState(() => Date.now() / 1000)
@@ -34,8 +36,8 @@ export default function SessionBar({
 
   const remaining = expiresAt == null ? null : expiresAt - now
   useEffect(() => {
-    if (!expired && remaining != null && remaining <= 0) onExpired()
-  }, [expired, remaining, onExpired])
+    if (!expired && !streaming && remaining != null && remaining <= 0) onExpired()
+  }, [expired, streaming, remaining, onExpired])
 
   if (demo) return null
 
@@ -45,11 +47,12 @@ export default function SessionBar({
   }
 
   return (
-    <div className="session-bar" role="status">
-      {expired || (remaining != null && remaining <= 0) ? (
-        <span className="expired">{t('session.expired')}</span>
+    <div className="session-bar">
+      {expired || (remaining != null && remaining <= 0 && !streaming) ? (
+        <span className="expired" role="status">{t('session.expired')}</span>
       ) : (
-        remaining != null && <span>{t('session.expiresIn', { mmss: mmss(remaining) })}</span>
+        // Changes every second: keep it out of screen-reader live regions.
+        remaining != null && <span aria-live="off">{t('session.expiresIn', { mmss: mmss(Math.max(remaining, 0)) })}</span>
       )}
       <label title={t('session.contentWarning')}>
         <input type="checkbox" checked={contentAllowed} disabled={expired} onChange={(e) => toggle(e.target.checked)} />{' '}

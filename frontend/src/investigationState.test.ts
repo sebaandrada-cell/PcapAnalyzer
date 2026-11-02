@@ -90,3 +90,34 @@ test('interrupted turn keeps partial text, tokens cap blocks input, usage accumu
   assert.equal(reduce(refreshed, { type: 'expired' }).blockedReason, 'expired')
   assert.deepEqual(reduce(refreshed, { type: 'reset' }), initialState(null, null, false))
 })
+
+test('stream_end without done marks the turn interrupted (resend available)', () => {
+  const s = run(initialState('sid', 1000, false), [
+    { type: 'start', question: 'a' },
+    { type: 'text', delta: 'parcial' },
+    { type: 'stream_end' },
+  ])
+  assert.equal(s.turns[0].streaming, false)
+  assert.equal(s.turns[0].interrupted, true)
+  const clean = run(initialState('sid', 1000, false), [
+    { type: 'start', question: 'b' },
+    { type: 'done', limited: false },
+    { type: 'stream_end' },
+  ])
+  assert.equal(clean.turns[0].interrupted, false)
+})
+
+test('a session refresh with a future expiry clears a premature expiry block', () => {
+  const future = Date.now() / 1000 + 3600
+  const s = run(initialState('sid', 1000, false), [
+    { type: 'start', question: 'a' },
+    { type: 'expired' },
+    { type: 'done', limited: false },
+    { type: 'session', info: { expires_at: future, content_allowed: false } },
+  ])
+  assert.equal(s.expired, false)
+  assert.equal(s.blockedReason, null)
+  const tokens = run(s, [{ type: 'start', question: 'b' }, { type: 'error', code: 'session_tokens', message: 'x' },
+                        { type: 'session', info: { expires_at: future, content_allowed: false } }])
+  assert.equal(tokens.blockedReason, 'tokens') // only the expiry block is cleared
+})
