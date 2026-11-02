@@ -120,6 +120,15 @@ run_checks() {
       "$WORK/analysis.json" > "$WORK/report.json"
     c=$(http -X POST "$base/report" -H "$auth" -H 'Content-Type: application/json' --data @"$WORK/report.json")
     if [ "$c" = 200 ] && [ "$(head -c4 "$BODY")" = "%PDF" ]; then ok "/report → PDF válido ($(wc -c < "$BODY" | tr -d ' ') bytes)"; else ko "/report → $c"; fi
+    # Investigation sessions: the analysis carries a session and the demo agent streams a report.
+    sid=$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])).get("session") or {}; print(s.get("id",""))' "$WORK/analysis.json")
+    if [ -n "$sid" ]; then ok "/analyze devuelve una sesión de investigación"; else ko "/analyze no devuelve session.id"; fi
+    if [ -n "$sid" ]; then
+      c=$(http -X POST "$base/sessions/$sid/chat" -H "$auth" -H 'Content-Type: application/json' --data '{"message":"__investigate__","lang":"es"}')
+      if [ "$c" = 200 ] && grep -q '^event: done' "$BODY" && grep -q 'filter: tcp.stream' "$BODY"; then ok "/sessions/{id}/chat (demo) → informe por SSE con evidencia"; else ko "/sessions/{id}/chat → $c"; fi
+    else
+      ko "sin sesión: se omite /sessions/{id}/chat"
+    fi
   else
     ko "sin análisis previo: se omiten /diagnose y /report"
   fi

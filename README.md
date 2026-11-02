@@ -144,7 +144,7 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 
 ### Qué incluye el dashboard (Fase 2)
 
-- Cabecera con metadatos del archivo y barra de consulta en lenguaje natural.
+- Cabecera con metadatos del archivo y, debajo, el **panel de investigación con IA** (informe automático en streaming, chat de seguimiento, barra de sesión con cuenta atrás, interruptor de contenido, coste aproximado y borrado).
 - Tarjetas de métricas: paquetes, duración, conversaciones y problemas detectados.
 - Distribución de protocolos (barras horizontales) y top talkers con marca ⚠ en hosts implicados en issues, más túneles VPN detectados.
 - Gráfico temporal (Recharts): paquetes/s en azul y retransmisiones/s en rojo, con tooltip. La serie se mantiene dispersa para evitar crear un punto por cada segundo de capturas largas.
@@ -156,7 +156,7 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 - **Sesiones TLS**: versión, cipher, SNI y alerta por stream. Todo esto también aparece en el informe PDF.
 - Lista de problemas con badges de severidad (Crítico/Aviso/Info).
 - Drill-down: clic en un issue con conversación asociada o en un top talker abre el detalle de la conversación TCP (bytes por sentido, retransmisiones, MSS, RTT de handshake, eventos window 0 e issues relacionados), con un **diagrama de flujo** (ladder diagram estilo Wireshark) del intercambio de paquetes entre los dos extremos.
-- Panel "Diagnóstico asistido" y barra de consulta en lenguaje natural conectados a la capa IA. Las conversaciones e incidencias devueltas por la consulta filtran la lista de paquetes muestreada y resaltan las incidencias relacionadas.
+- Las marcas de evidencia del informe (`[[pkt: N]]`, `[[filter: …]]`) se muestran como botones: «Ver paquetes» aplica el filtro en la lista local y un número de paquete salta a su fila; si el filtro usa campos que la lista no conoce, se ofrece solo copiarlo para Wireshark.
 - **Cobertura OSI explícita**: una matriz explica las señales detectables y las limitaciones de cada capa, incluida la imposibilidad de inferir estado físico de capa 1 únicamente desde un pcap.
 - Aviso visible cuando un límite de memoria recorta secciones del análisis.
 - **Modo claro/oscuro e idioma (ES/EN)** con toggles en la barra de configuración (arriba a la derecha); la preferencia se guarda en el navegador. En inglés, el diagnóstico y las consultas de IA también responden en inglés. Nota: el texto de los problemas autodetectados lo generan los detectores del backend y por ahora se muestra siempre en español.
@@ -164,10 +164,10 @@ Para ver la web mientras desarrollas, deja backend y Vite ejecutándose y abre <
 
 ### Capa IA (Fase 3)
 
-Dos endpoints que envían a la Anthropic API **solo el resumen JSON del análisis** (recortado a un máximo de issues/conversaciones), **nunca la captura**. El resumen sí puede incluir IPs, nombres de host, DNS y el nombre del archivo. No actives la IA externa sin autorización para compartir esos metadatos; la captura puede contener información sensible.
+La interfaz usa la investigación interactiva (sección siguiente). Siguen disponibles dos endpoints más simples que envían a la Anthropic API **solo el resumen JSON del análisis** (recortado a un máximo de issues/conversaciones), **nunca la captura**. El resumen sí puede incluir IPs, nombres de host, DNS y el nombre del archivo. No actives la IA externa sin autorización para compartir esos metadatos; la captura puede contener información sensible.
 
-- `POST /diagnose` — diagnóstico narrativo en español: *qué está pasando, causa probable y siguiente paso recomendado*. En la UI: botón "Generar diagnóstico" del panel inferior.
-- `POST /query` — traduce una pregunta en lenguaje natural ("conexiones fallidas hacia el servidor de correo") a un **display filter de Wireshark**, con explicación y la lista de conversaciones/issues relacionadas que existen en los datos analizados. La interfaz aplica esa selección a la lista local de paquetes muestreada; el filtro no se vuelve a ejecutar contra el pcap.
+- `POST /diagnose` — diagnóstico narrativo: *qué está pasando, causa probable y siguiente paso recomendado* (ya no se usa desde la interfaz; lo sustituye la investigación).
+- `POST /query` — traduce una pregunta en lenguaje natural ("conexiones fallidas hacia el servidor de correo") a un **display filter de Wireshark**, con explicación y la lista de conversaciones/issues relacionadas que existen en los datos analizados. Tampoco se usa desde la interfaz desde la 1.3.0; se mantiene para integraciones.
 
 **Configurar la capa IA** — dos opciones:
 

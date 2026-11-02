@@ -311,7 +311,7 @@
     <div>
       <p class="eyebrow reveal" data-k="hero.eyebrow">Analizador de capturas · auto-alojado</p>
       <h1 class="reveal d1" data-k="hero.h1">Encuentra el fallo de red en segundos, no en horas.</h1>
-      <p class="lead reveal d2" data-k="hero.lead">Sube un <code style="font-family:var(--mono);font-size:.9em">.pcap</code> y PcapAnalyzer te dice qué falla, por qué, y el siguiente paso. Motor de detección + diagnóstico con IA. Todo en tu propia máquina.</p>
+      <p class="lead reveal d2" data-k="hero.lead">Sube un <code style="font-family:var(--mono);font-size:.9em">.pcap</code> y PcapAnalyzer te dice qué falla, por qué, y el siguiente paso. Motor de detección + investigación con IA. Todo en tu propia máquina.</p>
       <div class="cta-row reveal d3">
         <a class="btn btn-primary" href="#pricing" data-buy data-k="hero.ctaBuy">Comprar y descargar · <span class="price-tag">5&nbsp;€</span></a>
         <a class="btn btn-ghost" href="https://pcap-analyzer-seven.vercel.app/#demo" target="_blank" rel="noopener" data-k="hero.ctaDemo">Ver demo sin registro</a>
@@ -342,7 +342,7 @@
         </div>
 
         <div class="dx">
-          <div class="dx-label" data-k="term.dxLabel">✦ Diagnóstico asistido</div>
+          <div class="dx-label" data-k="term.dxLabel">✦ Investigación con IA</div>
           <p data-k="term.dx1"><strong>Qué pasa:</strong> el host 10.0.0.1 concentra el tráfico y sufre entrega degradada hacia 10.0.0.2: la sesión :8080 retransmite el <strong>42,9%</strong>, con patrón de <strong>agujero negro PMTUD</strong>.</p>
           <p data-k="term.dx2"><strong>Siguiente paso:</strong> permite ICMP «Fragmentation Needed» en el camino o aplica MSS clamping en el router.</p>
         </div>
@@ -365,13 +365,13 @@
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow" data-k="feat.eyebrow">Qué hace</p>
-      <h2 data-k="feat.h2">La potencia de Wireshark, con el diagnóstico ya hecho.</h2>
+      <h2 data-k="feat.h2">La potencia de Wireshark, con la investigación ya hecha.</h2>
       <p data-k="feat.sub">Todas las vistas que esperas de un analizador, más un motor que señala los problemas y una IA que los explica en tu idioma.</p>
     </div>
     <div class="grid">
       <div class="card"><div class="k" data-k="card1.k">Motor de detección</div><h3 data-k="card1.h3">18 patrones, sin buscarlos a mano</h3><p data-k="card1.p">SYN→RST, retransmisiones, ACK duplicados, pérdida y reordenamiento, ventana cero/llena, PMTUD, fragmentación, errores ICMP, DNS sin respuesta o lento, TLS, túneles VPN e IP duplicada — con severidad, y filtros estilo Wireshark para ver los paquetes.</p></div>
-      <div class="card"><div class="k" data-k="card2.k">Diagnóstico IA</div><h3 data-k="card2.h3">Qué pasa · causa · siguiente paso</h3><p data-k="card2.p">Una narrativa clara que conecta los problemas en una historia y te dice qué revisar. Solo se envía un resumen JSON, nunca el pcap.</p></div>
-      <div class="card"><div class="k" data-k="card3.k">Consulta natural</div><h3 data-k="card3.h3">Pregunta → filtro Wireshark</h3><p data-k="card3.p">«Muéstrame las conexiones fallidas al servidor de correo» y obtienes el display filter, con los problemas relacionados resaltados.</p></div>
+      <div class="card"><div class="k" data-k="card2.k">Investigación IA</div><h3 data-k="card2.h3">Veredicto · hallazgos · causa · qué hacer</h3><p data-k="card2.p">La IA investiga la captura con herramientas (filtros reales, detalle de flujos, estadísticas) y cada afirmación trae su evidencia: paquetes y filtros que aplicas con un clic. La captura se queda cifrada en tu máquina; la IA solo ve lo que devuelven sus herramientas.</p></div>
+      <div class="card"><div class="k" data-k="card3.k">Chat sobre la captura</div><h3 data-k="card3.h3">«¿Por qué se para el flujo 7 en el segundo 3?»</h3><p data-k="card3.p">Preguntas de seguimiento con respuesta investigada, no inventada: la IA vuelve a mirar los paquetes y te dice qué prueba la captura y qué no.</p></div>
       <div class="card"><div class="k" data-k="card4.k">Vistas Wireshark</div><h3 data-k="card4.h3">Paquetes, HTTP, DNS, TLS, SRT</h3><p data-k="card4.p">Lista de paquetes con filtros y orden, tablas de protocolo, tiempos de respuesta y un diagrama de flujo por conversación.</p></div>
       <div class="card"><div class="k" data-k="card5.k">Privado por diseño</div><h3 data-k="card5.h3">Corre en tu máquina</h3><p data-k="card5.p">El archivo se procesa localmente y se borra tras el análisis. Ideal para MSP y NOC con datos sensibles. Docker, un comando.</p></div>
       <div class="card"><div class="k" data-k="card6.k">Listo para entregar</div><h3 data-k="card6.h3">Informe PDF + bilingüe</h3><p data-k="card6.p">Exporta un informe en PDF para el cliente. Interfaz en español o inglés, tema claro u oscuro, a un clic.</p></div>
@@ -383,7 +383,7 @@
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow" data-k="how.eyebrow">Cómo funciona</p>
-      <h2 data-k="how.h2">De la captura al diagnóstico, en tres pasos.</h2>
+      <h2 data-k="how.h2">De la captura al veredicto, en tres pasos.</h2>
     </div>
     <div class="steps">
       <div class="step">
@@ -400,9 +400,9 @@
       </div>
       <div class="step">
         <div class="n" data-k="step3.n">Paso 03</div>
-        <h3 data-k="step3.h3">Lee el diagnóstico</h3>
-        <p data-k="step3.p">Problemas detectados, tablas y la explicación de la IA. Exporta el PDF si quieres.</p>
-        <code data-k="step3.code">Generar diagnóstico →</code>
+        <h3 data-k="step3.h3">Lee el informe y pregunta</h3>
+        <p data-k="step3.p">Problemas detectados, tablas y la investigación de la IA con evidencia clicable. Pregunta lo que falte y exporta el PDF.</p>
+        <code data-k="step3.code">tcp.stream eq 7 → Ver paquetes</code>
       </div>
     </div>
   </div>
@@ -436,7 +436,7 @@
       <p class="price-sub" data-k="price.sub">Descarga completa · self-hosted · sin suscripción</p>
       <ul class="plist">
         <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="price.li1">Código completo + Docker Compose (arranque en un comando)</span></li>
-        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="price.li2">Motor de 18 detectores + diagnóstico con IA</span></li>
+        <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="price.li2">Motor de 18 detectores + investigación con IA</span></li>
         <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="price.li3">Vistas Wireshark, informe PDF, interfaz ES/EN claro-oscuro</span></li>
         <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span data-k="price.li4">Modo demo incluido — pruébalo sin clave de API</span></li>
       </ul>
@@ -451,7 +451,7 @@
   <div class="wrap">
     <div class="section-head"><p class="eyebrow" data-k="faq.eyebrow">Dudas rápidas</p><h2 data-k="faq.h2">Antes de comprar.</h2></div>
     <div class="faq">
-      <details open><summary data-k="faq.q1">¿Necesito una clave de API para usarlo?</summary><p data-k="faq.a1">No es obligatoria. Sin clave, la app funciona con un modo demo que simula el diagnóstico a partir del propio análisis. Si quieres el diagnóstico con IA real, pones tu propia clave de Anthropic (el coste va a tu cuenta, ~0,05–0,10&nbsp;€ por diagnóstico).</p></details>
+      <details open><summary data-k="faq.q1">¿Necesito una clave de API para usarlo?</summary><p data-k="faq.a1">No es obligatoria. Sin clave, la app funciona con un modo demo que simula el diagnóstico a partir del propio análisis. Si quieres la IA real, pones tu propia clave de Anthropic (el coste va a tu cuenta: unos 0,20–0,80&nbsp;€ por investigación inicial y 0,05–0,25&nbsp;€ por pregunta, con topes configurables).</p></details>
       <details><summary data-k="faq.q2">¿Qué necesito para ejecutarlo?</summary><p data-k="faq.a2">Docker y Docker Compose. Un solo comando (<span style="font-family:var(--mono)">./start.sh</span>; en Windows, desde Git Bash o WSL) lo levanta todo y te da tu token de acceso. Abres <span style="font-family:var(--mono)">localhost:8080</span>, lo pegas y listo. Incluye una guía de inicio paso a paso.</p></details>
       <details><summary data-k="faq.q3">¿Mis capturas son privadas?</summary><p data-k="faq.a3">Sí. Todo el análisis ocurre en tu máquina y el archivo se descarta al terminar. Solo si activas la IA se envía un resumen JSON de métricas — nunca los paquetes ni el pcap.</p></details>
       <details><summary data-k="faq.q4">¿Recibo actualizaciones?</summary><p data-k="faq.a4">La descarga incluye el código completo, así que es tuyo para ejecutar y adaptar. Las mejoras futuras se publican como nuevas versiones.</p></details>
@@ -526,7 +526,7 @@
 
       "hero.eyebrow": "Packet-capture analyzer · self-hosted",
       "hero.h1": "Find the network fault in seconds, not hours.",
-      "hero.lead": 'Drop a <code style="font-family:var(--mono);font-size:.9em">.pcap</code> and PcapAnalyzer tells you what is failing, why, and the next step. Detection engine + AI diagnosis. All on your own machine.',
+      "hero.lead": 'Drop a <code style="font-family:var(--mono);font-size:.9em">.pcap</code> and PcapAnalyzer tells you what is failing, why, and the next step. Detection engine + AI investigation. All on your own machine.',
       "hero.ctaBuy": 'Buy & download · <span class="price-tag">€5</span>',
       "hero.ctaDemo": "Try the demo, no sign-up",
       "hero.ctaHow": "See how it works",
@@ -537,7 +537,7 @@
       "term.issueTitle": "SYN answered with an immediate RST",
       "term.issueDetail": '10.0.0.1:34568 → 10.0.0.3:8443 got a <b>RST 5&nbsp;ms</b> after the SYN with no SYN-ACK. Likely a firewall rejecting the connection.',
       "term.spark": "packets/s",
-      "term.dxLabel": "✦ AI diagnosis",
+      "term.dxLabel": "✦ AI investigation",
       "term.dx1": '<strong>What is happening:</strong> host 10.0.0.1 concentrates the traffic and sees degraded delivery to 10.0.0.2: the :8080 session retransmits <strong>42.9%</strong>, with a <strong>PMTUD black-hole</strong> pattern.',
       "term.dx2": '<strong>Next step:</strong> allow ICMP "Fragmentation Needed" along the path, or apply MSS clamping on the router.',
 
@@ -548,17 +548,17 @@
       "stat.pdf": "exportable report",
 
       "feat.eyebrow": "What it does",
-      "feat.h2": "Wireshark's power, with the diagnosis already done.",
+      "feat.h2": "Wireshark's power, with the investigation already done.",
       "feat.sub": "Every view you expect from an analyzer, plus an engine that flags the problems and an AI that explains them in your language.",
       "card1.k": "Detection engine",
       "card1.h3": "18 patterns, no manual hunting",
       "card1.p": "SYN→RST, retransmissions, duplicate ACKs, loss and reordering, zero/full window, PMTUD, fragmentation, ICMP errors, unanswered or slow DNS, TLS, VPN tunnels and duplicate IP — with severity, plus Wireshark-style filters to see the packets.",
-      "card2.k": "AI diagnosis",
-      "card2.h3": "What · cause · next step",
-      "card2.p": "A clear narrative that connects the problems into one story and tells you what to check. Only a JSON summary is sent, never the pcap.",
-      "card3.k": "Natural query",
-      "card3.h3": "Ask → Wireshark filter",
-      "card3.p": '"Show me the failed connections to the mail server" and you get the display filter, with related problems highlighted.',
+      "card2.k": "AI investigation",
+      "card2.h3": "Verdict · findings · cause · what to do",
+      "card2.p": "The AI investigates the capture with tools (real filters, stream detail, statistics) and every claim carries its evidence: packets and filters you apply with one click. The capture stays encrypted on your machine; the AI only sees what its tools return.",
+      "card3.k": "Chat about the capture",
+      "card3.h3": "“Why does stream 7 stall at second 3?”",
+      "card3.p": "Follow-up questions answered by investigating, not guessing: the AI goes back to the packets and tells you what the capture proves and what it does not.",
       "card4.k": "Wireshark views",
       "card4.h3": "Packets, HTTP, DNS, TLS, SRT",
       "card4.p": "Packet list with filters and sorting, protocol tables, response times and a per-conversation flow diagram.",
@@ -570,7 +570,7 @@
       "card6.p": "Export a PDF report for the client. Interface in Spanish or English, light or dark theme, one click.",
 
       "how.eyebrow": "How it works",
-      "how.h2": "From capture to diagnosis, in three steps.",
+      "how.h2": "From capture to verdict, in three steps.",
       "step1.n": "Step 01",
       "step1.h3": "Start it",
       "step1.p": "One command and the app runs on your machine.",
@@ -578,9 +578,9 @@
       "step2.h3": "Upload your capture",
       "step2.p": 'Drag a <span style="font-family:var(--mono)">.pcap</span> / <span style="font-family:var(--mono)">.pcapng</span> or try the sample one.',
       "step3.n": "Step 03",
-      "step3.h3": "Read the diagnosis",
-      "step3.p": "Detected problems, tables and the AI explanation. Export the PDF if you want.",
-      "step3.code": "Generate diagnosis →",
+      "step3.h3": "Read the report and ask",
+      "step3.p": "Detected problems, tables and the AI investigation with clickable evidence. Ask what is missing and export the PDF.",
+      "step3.code": "tcp.stream eq 7 → Show packets",
 
       "priv.eyebrow": "Privacy",
       "priv.h2": "Your captures never leave your machine.",
@@ -596,7 +596,7 @@
       "price.per": "one-time",
       "price.sub": "Full download · self-hosted · no subscription",
       "price.li1": "Full source + Docker Compose (one-command start)",
-      "price.li2": "18-detector engine + AI diagnosis",
+      "price.li2": "18-detector engine + AI investigation",
       "price.li3": "Wireshark views, PDF report, ES/EN light-dark UI",
       "price.li4": "Demo mode included — try it without an API key",
       "price.buy": "Buy & download",
@@ -606,7 +606,7 @@
       "faq.eyebrow": "Quick questions",
       "faq.h2": "Before you buy.",
       "faq.q1": "Do I need an API key to use it?",
-      "faq.a1": "Not required. Without a key, the app runs a demo mode that simulates the diagnosis from the analysis itself. For a real AI diagnosis, you add your own Anthropic key (the cost goes to your account, ~€0.05–0.10 per diagnosis).",
+      "faq.a1": "Not required. Without a key, the app runs a demo mode that simulates the diagnosis from the analysis itself. For the real AI, you add your own Anthropic key (the cost goes to your account: about €0.20–0.80 per initial investigation and €0.05–0.25 per question, with configurable caps).",
       "faq.q2": "What do I need to run it?",
       "faq.a2": 'Docker and Docker Compose. A single command (<span style="font-family:var(--mono)">./start.sh</span>; on Windows, from Git Bash or WSL) brings everything up and gives you your access token. Open <span style="font-family:var(--mono)">localhost:8080</span>, paste it and you are done. A step-by-step guide is included.',
       "faq.q3": "Are my captures private?",

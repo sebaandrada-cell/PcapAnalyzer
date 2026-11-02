@@ -20,8 +20,8 @@ Por eso he hecho PcapAnalyzer: subes un .pcap o .pcapng (también .gz) y te dice
 
 Lo que hace:
 - Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación, errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
-- Diagnóstico en lenguaje claro: qué pasa, causa probable y siguiente paso. Con tu propia clave de Anthropic; sin clave funciona en modo demo, con texto generado sin IA.
-- Filtros estilo Wireshark sobre la lista de paquetes y consultas en lenguaje natural que se traducen a un filtro.
+- Investigación con IA: la IA aplica filtros reales, mira los flujos y las estadísticas, y entrega veredicto, hallazgos con evidencia (paquetes y filtros clicables), causa probable y qué hacer. Después le preguntas lo que falte. Con tu propia clave de Anthropic; sin clave funciona en modo demo, con texto generado sin IA.
+- Filtros estilo Wireshark sobre la lista de paquetes, colores, exportación CSV e información experta.
 - Informe en PDF, interfaz en español e inglés, tema claro y oscuro.
 
 Se ejecuta en tu máquina con Docker, con un solo comando (./start.sh). Las capturas, que suelen llevar credenciales y datos de clientes, no salen de tu equipo. Solo si activas la IA se envía un resumen en JSON, nunca el pcap.
@@ -50,8 +50,8 @@ That is why I built PcapAnalyzer: you upload a .pcap or .pcapng (gzip works too)
 
 What it does:
 - Detects 18 kinds of problem: firewall blocks (SYN→RST), retransmissions and duplicate ACKs, loss and reordering, zero or full window, PMTUD black holes, IP fragmentation, ICMP errors, unanswered or slow DNS, TLS failures, VPN tunnel issues and duplicate IPs.
-- A plain-language diagnosis: what is happening, the likely cause and the next step. It uses your own Anthropic key; without one it runs in a demo mode with text generated without AI.
-- Wireshark-style display filters on the packet list, and natural-language questions that turn into a filter.
+- AI investigation: the AI applies real filters, looks at streams and statistics, and delivers a verdict, findings with evidence (clickable packets and filters), the likely cause and what to do. Then you ask whatever is missing. It uses your own Anthropic key; without one it runs in a demo mode with text generated without AI.
+- Wireshark-style display filters on the packet list, colouring, CSV export and expert information.
 - PDF report, Spanish and English interface, light and dark theme.
 
 It runs on your own machine with Docker, with a single command (./start.sh). Captures, which often hold credentials and customer data, do not leave your computer. Only if you turn on the AI is a JSON summary sent, never the pcap.
