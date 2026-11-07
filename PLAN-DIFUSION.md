@@ -12,7 +12,7 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
-| Paquete 1.3.0 (investigación con IA con herramientas sobre la captura, 18 detectores, filtros estilo Wireshark), sin secretos ni datos internos | ☐ construido, pendiente de subir a Gumroad con OK del dueño |
+| Paquete 1.3.0 (investigación con IA con herramientas sobre la captura, 18 detectores, filtros estilo Wireshark), sin secretos ni datos internos | ☑ subido a Gumroad el 2026-11-02 (sha256 verificado en la descarga real) |
 | Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
 | `docker compose` probado de punta a punta (21 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
 | Landing bilingüe con el comando correcto (`./start.sh`) | ✔ versión 7 |
