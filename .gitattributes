@@ -29,3 +29,6 @@ marketing  export-ignore
 
 # Internal design docs (not part of the product)
 docs/superpowers export-ignore
+
+# Lockfile of the skills CLI (npx skills); agent tooling, not product.
+skills-lock.json  export-ignore

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "docker-compose-patterns": {
+      "source": "docker/skills",
+      "sourceType": "github",
+      "skillPath": "skills/docker-compose-patterns/SKILL.md",
+      "computedHash": "391f366bb0e60f5c7c48ecc814b917e7dae797edbb58625d228cb951d7a538ee"
+    },
+    "fastapi": {
+      "source": "fastapi/fastapi",
+      "sourceType": "github",
+      "skillPath": "fastapi/.agents/skills/fastapi/SKILL.md",
+      "computedHash": "c486e812131d4cc185a3ba0e551fca52369d286ba9e31d5493124295d6fde49f"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "cfec3cbf4023ac0336f37bb28991824d87cc9e92758e4615e1e5d85c5f2ceeed"
+    }
+  }
+}
