@@ -164,6 +164,13 @@ MAX_RESOLVED_NAMES = _int_env("MAX_RESOLVED_NAMES", 5000)
 # Packet list returned to the UI (Wireshark-style view), capped for size.
 PACKET_LIST_MAX = _int_env("PACKET_LIST_MAX", 1000)
 
+# --- Packet queries over the kept capture (POST /sessions/{id}/packets) ---
+PACKET_QUERY_MAX_ROWS = _int_env("PACKET_QUERY_MAX_ROWS", 1000)
+PACKET_QUERY_WORKERS = _int_env("PACKET_QUERY_WORKERS", 2)  # concurrent tshark runs
+PACKET_QUERY_TIMEOUT_S = _int_env("PACKET_QUERY_TIMEOUT_S", 60)
+# Frame numbers of duplicated frames remembered so later queries can mark them.
+MAX_DUPLICATE_FRAMES_TRACKED = _int_env("MAX_DUPLICATE_FRAMES_TRACKED", 500000)
+
 # --- Capture quality (limits of the capture itself, see analysis/quality.py) ---
 # A frame identical to one seen within this window is a capture duplicate (port
 # mirror copying ingress and egress, capture on several interfaces). A real

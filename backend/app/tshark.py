@@ -113,6 +113,23 @@ FIELDS: List[str] = [
     "dhcp.option.hostname",
     "dhcp.option.dhcp_server_id",
 ]
+# What one row of the packet list needs (analysis.engine.build_packet_row).
+ROW_FIELDS: List[str] = [
+    "frame.number", "frame.time_epoch", "frame.len", "frame.protocols",
+    "_ws.col.protocol", "_ws.col.info",
+    "ip.src", "ip.dst", "ipv6.src", "ipv6.dst", "ip.ttl",
+    "tcp.stream", "tcp.srcport", "tcp.dstport", "tcp.len", "tcp.seq", "tcp.ack",
+    "tcp.window_size",
+    "tcp.flags.syn", "tcp.flags.ack", "tcp.flags.reset", "tcp.flags.fin", "tcp.flags.push",
+    "tcp.analysis.retransmission", "tcp.analysis.fast_retransmission",
+    "tcp.analysis.spurious_retransmission", "tcp.analysis.zero_window",
+    "tcp.analysis.duplicate_ack", "tcp.analysis.out_of_order",
+    "tcp.analysis.lost_segment", "tcp.analysis.window_full",
+    "tcp.analysis.window_update", "tcp.analysis.keep_alive",
+    "tcp.analysis.zero_window_probe", "tcp.analysis.ack_rtt",
+    "_ws.expert.message", "_ws.expert.severity", "_ws.expert.group",
+    "udp.srcport", "udp.dstport",
+]
 MAX_EK_LINE_BYTES = 1024 * 1024
 
 
@@ -197,11 +214,20 @@ def iter_packets(
     tshark_path: str,
     pcap_path: str,
     timeout_s: Optional[int] = None,
+    display_filter: Optional[str] = None,
+    fields: Optional[List[str]] = None,
 ) -> Iterator[dict]:
-    """Stream per-packet field dicts from a single tshark pass."""
+    """Stream per-packet field dicts from a single tshark pass.
+
+    ``display_filter`` limits the output to matching packets (tshark still
+    dissects every packet in order, so TCP analysis stays correct). Closing the
+    generator early kills tshark.
+    """
     timeout_s = timeout_s or config.TSHARK_TIMEOUT_S
     cmd = [tshark_path, "-r", pcap_path, "-n", "-T", "ek"]
-    for name in FIELDS:
+    if display_filter:
+        cmd += ["-Y", display_filter]
+    for name in (fields or FIELDS):
         cmd += ["-e", name]
 
     proc = subprocess.Popen(

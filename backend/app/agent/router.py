@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 from dataclasses import asdict
-from typing import Dict, Iterator
+from typing import Dict, Iterator, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -18,19 +18,24 @@ except ImportError:  # pragma: no cover
     from typing_extensions import Literal
 
 from .. import config
-from ..auth import Principal, require_api_token_no_rate_limit
+from ..analysis.engine import query_packets
+from ..auth import Principal, require_api_token, require_api_token_no_rate_limit
 from ..guards import llm_budget
 from ..llm.client import availability, get_client
 from ..llm.service import AIServiceError, AIUnavailableError
+from ..models import PacketRow
 from ..sessions import Session, session_store
-from ..tshark import find_tshark, install_instructions
+from ..tshark import TsharkError, TsharkTimeoutError, find_tshark, install_instructions
 from .demo import DEMO_CHAT_REPLY, demo_investigation
 from .prompts import INVESTIGATE_SENTINEL
 from .runner import AgentLimitError, SessionGoneError, TurnCancelled, TurnEvent, run_turn
+from .tshark_run import ToolError, ToolTimeout, validate_filter
 
 logger = logging.getLogger("pcapanalyzer.agent")
 router = APIRouter()
 _workers = threading.BoundedSemaphore(max(1, config.AGENT_WORKERS))
+# Each packet query is one tshark run over the capture: bound how many run at once.
+_packet_queries = threading.BoundedSemaphore(max(1, config.PACKET_QUERY_WORKERS))
 
 
 def ai_available() -> bool:  # module attribute so tests can swap it
@@ -100,6 +105,77 @@ def session_delete(
     if not session_store.delete(session_id, principal.tenant_id):
         raise _not_found()
     return Response(status_code=204)
+
+
+# ---- packets ------------------------------------------------------------------------
+class PacketQuery(BaseModel):
+    filter: str = Field(default="", max_length=2000)
+    limit: int = Field(default=500, ge=1, le=config.PACKET_QUERY_MAX_ROWS)
+    offset: int = Field(default=0, ge=0, le=5_000_000)
+
+
+class PacketQueryResult(BaseModel):
+    filter: str
+    rows: List[PacketRow]
+    offset: int
+    has_more: bool
+    # Total matches when the whole result fitted in this page, else None.
+    matched: Optional[int] = None
+
+
+@router.post("/sessions/{session_id}/packets", response_model=PacketQueryResult)
+def session_packets(
+    session_id: str,
+    query: PacketQuery,
+    principal: Principal = Depends(require_api_token),
+) -> PacketQueryResult:
+    """Apply a real Wireshark display filter to the capture kept for the session.
+
+    The packet list in the analysis holds only the first packets; this reaches
+    the whole capture. Headers and metadata only, same row shape as the list.
+    """
+    session = session_store.get(session_id, principal.tenant_id)
+    if session is None:
+        raise _not_found()
+    display_filter = query.filter.strip()
+    if any(ch in display_filter for ch in "\n\r\x00"):
+        raise HTTPException(status_code=422, detail="Filtro no válido: no se admiten saltos de línea.")
+    tshark = find_tshark()
+    if tshark is None:
+        raise HTTPException(status_code=503, detail=install_instructions())
+    if not _packet_queries.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="Hay otras búsquedas en curso. Inténtalo de nuevo en unos segundos.",
+            headers={"Retry-After": "3"},
+        )
+    try:
+        with session_store.decrypted_pcap(session) as pcap_path:
+            if display_filter:
+                validate_filter(pcap_path, display_filter)
+            rows, has_more = query_packets(
+                tshark, pcap_path, session.analysis, display_filter, query.limit, query.offset)
+    except (ToolTimeout, TsharkTimeoutError):
+        raise HTTPException(
+            status_code=504,
+            detail="La búsqueda tardó demasiado. Acota el filtro (por ejemplo, a una conversación).",
+        )
+    except ToolError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except TsharkError:
+        logger.warning("tshark falló en una consulta de paquetes.", exc_info=True)
+        raise HTTPException(status_code=502, detail="tshark no pudo leer la captura.")
+    except OSError:
+        raise _not_found()  # the session expired while the query was running
+    finally:
+        _packet_queries.release()
+    return PacketQueryResult(
+        filter=display_filter,
+        rows=rows,
+        offset=query.offset,
+        has_more=has_more,
+        matched=None if has_more else query.offset + len(rows),
+    )
 
 
 # ---- chat --------------------------------------------------------------------------

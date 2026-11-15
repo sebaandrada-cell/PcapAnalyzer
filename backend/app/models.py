@@ -6,9 +6,9 @@ transport concerns.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 try:  # Literal lives in typing from 3.8 on
     from typing import Literal
@@ -308,5 +308,9 @@ class AnalysisResult(BaseModel):
     resolved_names: List[ResolvedName] = Field(default_factory=list)
     capture_quality: CaptureQuality = Field(default_factory=CaptureQuality)
     meta: Meta
+    # Sorted frame numbers of frames duplicated by the capture. Kept in memory
+    # with the session (never serialised) so packet queries can mark them.
+    _duplicate_frames: Any = PrivateAttr(default=None)
+
     # None when sessions are disabled or the analysis ran in another process.
     session: Optional[SessionInfo] = None

@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 import re
 import time
+from array import array
+from bisect import bisect_left
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -41,6 +43,7 @@ from ..models import (
     UdpConversation,
 )
 from ..tshark import (
+    ROW_FIELDS,
     field as fget,
     field_bool,
     field_present,
@@ -285,6 +288,8 @@ class CaptureState:
     duplicate_frames: int = 0
     truncated_frames: int = 0
     recent_frames: "OrderedDict[tuple, float]" = field(default_factory=OrderedDict)
+    # Frame numbers of the duplicates, ascending (see query_packets).
+    duplicate_numbers: array = field(default_factory=lambda: array("I"))
     dns_queries_seen: int = 0
 
 
@@ -466,6 +471,82 @@ def _packet_extras(layers: dict, chain: List[str], expert_messages,
     return extras
 
 
+def build_packet_row(layers: dict, chain: List[str], ts: float, first_ts: float,
+                     length: int, src: Optional[str], dst: Optional[str],
+                     expert_messages, duplicate: bool) -> PacketRow:
+    """One row of the packet list (shared by the analysis and packet queries)."""
+    # tcp.stream tags the row so the flow graph can filter one conversation
+    # precisely (ICMP errors quote an inner packet — don't tag those).
+    raw_stream = fget(layers, "tcp.stream")
+    pkt_stream = (
+        int(raw_stream)
+        if raw_stream is not None and "icmp" not in chain and "icmpv6" not in chain
+        else None
+    )
+    return PacketRow(
+        number=int(fget(layers, "frame.number", "0") or 0),
+        time=round(max(0.0, ts - first_ts), 6),
+        src=_sanitize(src or "—", 64),
+        dst=_sanitize(dst or "—", 64),
+        protocol=_sanitize(fget(layers, "_ws.col.protocol", "?") or "?", 24),
+        length=length,
+        info=_sanitize(fget(layers, "_ws.col.info", "") or "", 200),
+        stream=pkt_stream,
+        **_packet_extras(layers, chain, expert_messages, duplicate),
+    )
+
+
+def query_packets(
+    tshark_path: str,
+    pcap_path: str,
+    analysis: AnalysisResult,
+    display_filter: str,
+    limit: int,
+    offset: int = 0,
+) -> Tuple[List[PacketRow], bool]:
+    """Rows matching a real Wireshark display filter, over the whole capture.
+
+    Returns ``(rows, has_more)``. tshark is stopped as soon as the page is
+    full, so a filter matching millions of packets costs one page.
+    """
+    first_ts = analysis.summary.start_time_epoch or 0.0
+    duplicates = analysis._duplicate_frames
+    rows: List[PacketRow] = []
+    has_more = False
+    seen = 0
+    packets = iter_packets(
+        tshark_path, pcap_path, timeout_s=config.PACKET_QUERY_TIMEOUT_S,
+        display_filter=display_filter.strip() or None, fields=ROW_FIELDS,
+    )
+    try:
+        for layers in packets:
+            seen += 1
+            if seen <= offset:
+                continue
+            if len(rows) >= limit:
+                has_more = True
+                break
+            try:
+                number = int(fget(layers, "frame.number", "0") or 0)
+                ts = _epoch(fget(layers, "frame.time_epoch"), first_ts)
+                chain = [t for t in (fget(layers, "frame.protocols", "") or "").split(":") if t]
+                duplicate = False
+                if duplicates is not None and len(duplicates):
+                    index = bisect_left(duplicates, number)
+                    duplicate = index < len(duplicates) and duplicates[index] == number
+                rows.append(build_packet_row(
+                    layers, chain, ts, first_ts, int(fget(layers, "frame.len", "0") or 0),
+                    fget(layers, "ip.src") or fget(layers, "ipv6.src"),
+                    fget(layers, "ip.dst") or fget(layers, "ipv6.dst"),
+                    [] if duplicate else _expert_messages(layers), duplicate,
+                ))
+            except (ValueError, TypeError):
+                continue  # same tolerance as the analysis: skip a malformed packet
+    finally:
+        packets.close()
+    return rows, has_more
+
+
 def _consume_packet(state: CaptureState, layers: dict) -> None:
     ts = _epoch(fget(layers, "frame.time_epoch"), state.last_ts or 0.0)
     length = int(fget(layers, "frame.len", "0") or 0)
@@ -494,31 +575,16 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     duplicate = is_duplicate(state.recent_frames, duplicate_key(layers, chain, src, dst), ts)
     if duplicate:
         state.duplicate_frames += 1
+        if len(state.duplicate_numbers) < config.MAX_DUPLICATE_FRAMES_TRACKED:
+            state.duplicate_numbers.append(int(fget(layers, "frame.number", "0") or 0))
 
     expert_messages = [] if duplicate else _expert_messages(layers)
     if expert_messages:
         _record_expert(state, int(fget(layers, "frame.number", "0") or 0), expert_messages)
 
     if len(state.packet_rows) < config.PACKET_LIST_MAX:
-        # tcp.stream tags the row so the flow graph can filter one conversation
-        # precisely (ICMP errors quote an inner packet — don't tag those).
-        raw_stream = fget(layers, "tcp.stream")
-        pkt_stream = (
-            int(raw_stream)
-            if raw_stream is not None and "icmp" not in chain and "icmpv6" not in chain
-            else None
-        )
-        state.packet_rows.append(PacketRow(
-            number=int(fget(layers, "frame.number", "0") or 0),
-            time=round(max(0.0, ts - state.first_ts), 6),
-            src=_sanitize(src or "—", 64),
-            dst=_sanitize(dst or "—", 64),
-            protocol=_sanitize(fget(layers, "_ws.col.protocol", "?") or "?", 24),
-            length=length,
-            info=_sanitize(fget(layers, "_ws.col.info", "") or "", 200),
-            stream=pkt_stream,
-            **_packet_extras(layers, chain, expert_messages, duplicate),
-        ))
+        state.packet_rows.append(build_packet_row(
+            layers, chain, ts, state.first_ts, length, src, dst, expert_messages, duplicate))
 
     if src and dst:
         for addr, sent in ((src, True), (dst, False)):
@@ -1138,7 +1204,7 @@ def analyze_pcap(
     if len(issues) > config.MAX_ISSUES:
         state.truncated_sections.add("issues")
         issues = issues[:config.MAX_ISSUES]
-    return AnalysisResult(
+    result = AnalysisResult(
         file=FileInfo(name=original_filename, size_bytes=size_bytes),
         summary=_build_summary(state),
         protocols=_build_protocols(state),
@@ -1167,3 +1233,5 @@ def analyze_pcap(
             skipped_packets=state.skipped_packets,
         ),
     )
+    result._duplicate_frames = state.duplicate_numbers
+    return result

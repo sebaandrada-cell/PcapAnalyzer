@@ -126,8 +126,11 @@ run_checks() {
     if [ -n "$sid" ]; then
       c=$(http -X POST "$base/sessions/$sid/chat" -H "$auth" -H 'Content-Type: application/json' --data '{"message":"__investigate__","lang":"es"}')
       if [ "$c" = 200 ] && grep -q '^event: done' "$BODY" && grep -q 'filter: tcp.stream' "$BODY"; then ok "/sessions/{id}/chat (demo) → informe por SSE con evidencia"; else ko "/sessions/{id}/chat → $c"; fi
+      # Real display filters over the kept capture (packets beyond the list sample).
+      c=$(http -X POST "$base/sessions/$sid/packets" -H "$auth" -H 'Content-Type: application/json' --data '{"filter":"tcp.flags.reset == 1","limit":50}')
+      if [ "$c" = 200 ] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); rows=d["rows"]; sys.exit(0 if rows and all("RST" in r["tcp_flags"] for r in rows) else 1)' "$BODY"; then ok "/sessions/{id}/packets → filtro real de Wireshark sobre la captura"; else ko "/sessions/{id}/packets → $c"; fi
     else
-      ko "sin sesión: se omite /sessions/{id}/chat"
+      ko "sin sesión: se omiten /sessions/{id}/chat y /sessions/{id}/packets"
     fi
   else
     ko "sin análisis previo: se omiten /diagnose y /report"
