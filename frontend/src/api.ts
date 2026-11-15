@@ -385,6 +385,49 @@ export async function patchSession(id: string, contentAllowed: boolean): Promise
   return parseOrThrow<SessionStatus>(response)
 }
 
+export interface PacketQueryResult {
+  filter: string
+  rows: PacketRow[]
+  offset: number
+  has_more: boolean
+  /** Total matches when everything fitted in the page, else null. */
+  matched: number | null
+}
+
+export class PacketQueryError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+/** Apply a real Wireshark display filter to the whole capture kept for the session. */
+export async function queryPackets(
+  sessionId: string,
+  filter: string,
+  signal?: AbortSignal,
+  limit = 1000,
+): Promise<PacketQueryResult> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/packets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...await authHeaders() },
+    body: JSON.stringify({ filter, limit }),
+    signal,
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      const body = (await response.json()) as { detail?: unknown }
+      if (typeof body.detail === 'string') detail = body.detail
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new PacketQueryError(response.status, detail)
+  }
+  return (await response.json()) as PacketQueryResult
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(id)}`, {
     method: 'DELETE',

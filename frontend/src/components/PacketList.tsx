@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { PacketQueryError, queryPackets } from '../api'
 import type { PacketListData, PacketRow } from '../api'
 import { FILTER_FIELDS, compileFilter, filtersForRow, looksLikeFilter } from '../displayFilter'
 import {
@@ -9,6 +10,7 @@ import {
   rowColor,
   type TimeFormat,
 } from '../packetView'
+import { remoteErrorKey, toServerFilter, type FilterMode } from '../remotePackets'
 import { useSettings } from '../settings'
 
 type SortKey = 'number' | 'time' | 'src' | 'dst' | 'protocol' | 'length'
@@ -82,6 +84,24 @@ interface Props {
   startEpoch?: number | null
   /** Pushes a filter into the box from elsewhere (issues, conversation modal...). */
   filterRequest?: { text: string; id: number } | null
+  /** Investigation session keeping the capture: enables whole-capture search. */
+  sessionId?: string | null
+}
+
+interface RemoteResult {
+  source: string // text in the filter box when the search ran
+  filter: string // display filter sent to the server
+  rows: PacketRow[]
+  hasMore: boolean
+  matched: number | null
+}
+
+type RemoteStatus = { kind: 'loading' } | { kind: 'error'; key: string; detail: string }
+
+function filterMode(text: string, known: Set<string>): FilterMode {
+  const compiled = compileFilter(text, known)
+  if (compiled.ok) return compiled.empty ? 'none' : 'filter'
+  return looksLikeFilter(text) ? 'error' : 'text'
 }
 
 // Wireshark-style packet list: display filters (a subset of the real language),
@@ -93,6 +113,7 @@ export default function PacketList({
   names,
   startEpoch = null,
   filterRequest = null,
+  sessionId = null,
 }: Props) {
   const { t } = useSettings()
   const [filter, setFilter] = useState('')
@@ -104,32 +125,98 @@ export default function PacketList({
   const [selected, setSelected] = useState<number | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [validSource, setValidSource] = useState('')
+  // Whole-capture search: the list holds only the first packets, the server
+  // keeps the capture for the session and runs the real filter with tshark.
+  const [remote, setRemote] = useState<RemoteResult | null>(null)
+  const [remoteStatus, setRemoteStatus] = useState<RemoteStatus | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const canSearchAll = Boolean(sessionId) && data.truncated
+  const baseRows = remote ? remote.rows : data.rows
 
-  // A filter pushed from outside replaces the current one and clears the other narrowing.
+  const knownProtocols = useMemo(
+    () => new Set(baseRows.map((row) => row.protocol.toLowerCase())),
+    [baseRows],
+  )
+
+  const clearRemote = useCallback(() => {
+    abortRef.current?.abort()
+    setRemote(null)
+    setRemoteStatus(null)
+  }, [])
+
+  const searchAll = useCallback(
+    async (text: string) => {
+      if (!sessionId) return
+      abortRef.current?.abort()
+      const serverFilter = toServerFilter(text, filterMode(text, knownProtocols))
+      if (!serverFilter) {
+        setRemote(null)
+        setRemoteStatus(null)
+        return
+      }
+      const controller = new AbortController()
+      abortRef.current = controller
+      setRemoteStatus({ kind: 'loading' })
+      try {
+        const result = await queryPackets(sessionId, serverFilter, controller.signal)
+        if (controller.signal.aborted) return
+        setRemote({
+          source: text.trim(),
+          filter: serverFilter,
+          rows: result.rows,
+          hasMore: result.has_more,
+          matched: result.matched,
+        })
+        setRemoteStatus(null)
+        setProtocol(null)
+        setSelected(null)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        const status = error instanceof PacketQueryError ? error.status : 0
+        setRemoteStatus({
+          kind: 'error',
+          key: remoteErrorKey(status),
+          detail: status === 422 && error instanceof Error ? error.message : '',
+        })
+      }
+    },
+    [sessionId, knownProtocols],
+  )
+  const searchAllRef = useRef(searchAll)
+  useEffect(() => {
+    searchAllRef.current = searchAll
+  }, [searchAll])
+
+  // A filter pushed from outside (evidence, issues, conversation modal) replaces
+  // the current one; on a truncated list it is looked up in the whole capture.
   useEffect(() => {
     if (!filterRequest) return
     setFilter(filterRequest.text)
     setProtocol(null)
-  }, [filterRequest])
+    if (canSearchAll) void searchAllRef.current(filterRequest.text)
+  }, [filterRequest, canSearchAll])
 
-  const knownProtocols = useMemo(
-    () => new Set(data.rows.map((row) => row.protocol.toLowerCase())),
-    [data.rows],
-  )
+  // A new analysis starts from its own sample; pending searches are dropped.
+  useEffect(() => {
+    setRemote(null)
+    setRemoteStatus(null)
+    return () => abortRef.current?.abort()
+  }, [data])
+
   const protocols = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const row of data.rows) counts.set(row.protocol, (counts.get(row.protocol) ?? 0) + 1)
+    for (const row of baseRows) counts.set(row.protocol, (counts.get(row.protocol) ?? 0) + 1)
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_CHIPS)
-  }, [data.rows])
+  }, [baseRows])
 
   const quick = useMemo(
     () =>
       QUICK_FILTERS.map((entry) => {
         const compiled = compileFilter(entry.filter, knownProtocols)
-        const count = compiled.ok ? data.rows.filter(compiled.test).length : 0
+        const count = compiled.ok ? baseRows.filter(compiled.test).length : 0
         return { ...entry, count }
       }).filter((entry) => entry.count > 0),
-    [data.rows, knownProtocols],
+    [baseRows, knownProtocols],
   )
 
   const compiled = useMemo(() => compileFilter(filter, knownProtocols), [filter, knownProtocols])
@@ -157,8 +244,18 @@ export default function PacketList({
   const useNames = resolve && names && names.size > 0 ? names : null
   const startEpochValue = startEpoch ?? null
 
+  // tshark filters the raw capture, where a frame copied by the mirror port
+  // looks like a retransmission; say how many of the matches are such copies.
+  const remoteDuplicates = useMemo(
+    () => (remote ? remote.rows.filter((row) => (row.analysis ?? []).includes('duplicate_frame')).length : 0),
+    [remote],
+  )
+
+  // The server already applied the text that is still in the box.
+  const remoteCoversFilter = remote != null && filter.trim() === remote.source
+
   const rows = useMemo(() => {
-    let visible = data.rows
+    let visible = baseRows
     if (queryApplies && queryCompiled && queryCompiled.ok) {
       visible = visible.filter(queryCompiled.test)
     } else if (streamIds) {
@@ -166,7 +263,9 @@ export default function PacketList({
       visible = visible.filter((row) => row.stream != null && selectedStreams.has(row.stream))
     }
     if (protocol) visible = visible.filter((row) => row.protocol === protocol)
-    if (mode === 'filter' && compiled.ok) visible = visible.filter(compiled.test)
+    if (remoteCoversFilter) {
+      /* nothing to narrow locally */
+    } else if (mode === 'filter' && compiled.ok) visible = visible.filter(compiled.test)
     else if (mode === 'error' && fallback.ok) visible = visible.filter(fallback.test)
     else if (mode === 'text') {
       const needle = filter.trim().toLowerCase()
@@ -185,11 +284,11 @@ export default function PacketList({
       }
       return String(left).localeCompare(String(right)) * direction
     })
-  }, [data.rows, filter, protocol, sort, streamIds, queryApplies, queryCompiled, compiled, fallback, mode, useNames])
+  }, [baseRows, remoteCoversFilter, filter, protocol, sort, streamIds, queryApplies, queryCompiled, compiled, fallback, mode, useNames])
 
   const selectedRow = useMemo(
-    () => (selected == null ? null : (data.rows.find((row) => row.number === selected) ?? null)),
-    [data.rows, selected],
+    () => (selected == null ? null : (baseRows.find((row) => row.number === selected) ?? null)),
+    [baseRows, selected],
   )
 
   const toggleSort = (key: SortKey) =>
@@ -224,6 +323,11 @@ export default function PacketList({
   }
 
   const filterStatus = (() => {
+    if (remoteCoversFilter) return null // tshark accepted it: the local subset has no say
+    if (remoteStatus?.kind === 'error') return null // the server's answer is shown instead
+    if (canSearchAll && mode === 'error') {
+      return { kind: 'hint' as const, text: t('packets.filterServerOnly') }
+    }
     if (!compiled.ok && mode === 'error') {
       return {
         kind: 'bad' as const,
@@ -254,8 +358,24 @@ export default function PacketList({
             autoCorrect="off"
             aria-invalid={mode === 'error'}
             aria-label={t('packets.title')}
-            onChange={(event) => setFilter(event.target.value)}
+            onChange={(event) => {
+              setFilter(event.target.value)
+              if (!event.target.value.trim() && remote) clearRemote()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && canSearchAll) void searchAll(filter)
+            }}
           />
+          {canSearchAll && (
+            <button
+              className="chip small"
+              onClick={() => void searchAll(filter)}
+              disabled={remoteStatus?.kind === 'loading' || !filter.trim()}
+              title={t('packets.searchAllHint', { n: data.rows.length, total: data.total })}
+            >
+              {t('packets.searchAll')}
+            </button>
+          )}
           {filter && (
             <button
               className="chip small"
@@ -270,6 +390,32 @@ export default function PacketList({
       {filterStatus && (
         <p className={`filter-note ${filterStatus.kind}`} role={filterStatus.kind === 'bad' ? 'alert' : undefined}>
           {filterStatus.text}
+        </p>
+      )}
+      {remoteStatus?.kind === 'loading' && (
+        <p className="filter-note hint" role="status">{t('packets.remoteLoading')}</p>
+      )}
+      {remoteStatus?.kind === 'error' && (
+        <p className="filter-note bad" role="alert">
+          {t(remoteStatus.key)}
+          {remoteStatus.detail && ` ${remoteStatus.detail}`}
+        </p>
+      )}
+      {remote && remoteStatus === null && (
+        <p className="filter-note ok" role="status">
+          {t(remote.hasMore ? 'packets.remoteResultMore' : 'packets.remoteResult', {
+            n: remote.matched ?? remote.rows.length,
+            filter: remote.filter,
+          })}{' '}
+          <button className="chip small" onClick={clearRemote}>{t('packets.remoteBack')}</button>
+        </p>
+      )}
+      {remote && remoteStatus === null && remoteDuplicates > 0 && (
+        <p className="filter-note hint">{t('packets.remoteDupNote', { n: remoteDuplicates })}</p>
+      )}
+      {canSearchAll && !remote && remoteStatus === null && (
+        <p className="filter-note hint">
+          {t('packets.searchAllHint', { n: data.rows.length, total: data.total })}
         </p>
       )}
       <details className="filter-help">
@@ -296,7 +442,7 @@ export default function PacketList({
           className={protocol === null ? 'chip active' : 'chip'}
           onClick={() => setProtocol(null)}
         >
-          {t('packets.all')} ({data.rows.length})
+          {t('packets.all')} ({baseRows.length})
         </button>
         {protocols.map(([name, count]) => (
           <button
@@ -403,8 +549,10 @@ export default function PacketList({
         {rows.length === 0 && <p className="table-empty">{t('packets.empty')}</p>}
       </div>
       <div className="table-foot">
-        {t('packets.foot', { shown: rows.length, total: data.rows.length })}
-        {data.truncated && t('packets.footTrunc', { n: data.rows.length, captured: data.total })}
+        {t('packets.foot', { shown: rows.length, total: baseRows.length })}
+        {remote
+          ? t('packets.footRemote', { captured: data.total })
+          : data.truncated && t('packets.footTrunc', { n: data.rows.length, captured: data.total })}
       </div>
       {selectedRow && (
         <PacketDetail

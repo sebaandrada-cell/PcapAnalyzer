@@ -134,6 +134,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
         names={names}
         startEpoch={result.summary.start_time_epoch}
         filterRequest={filterRequest}
+        sessionId={demo ? null : (result.session?.id ?? null)}
       />
       <ExpertInfo
         entries={result.expert_info ?? []}
