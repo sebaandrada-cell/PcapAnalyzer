@@ -74,6 +74,9 @@ def build_llm_context(analysis: AnalysisResult) -> Dict[str, Any]:
             }
             for c in analysis.conversations.udp[:MAX_UDP_CONVERSATIONS]
         ],
+        # Limits of the capture itself (duplicates, one-way, truncation).
+        "capture_quality": analysis.capture_quality.model_dump(
+            exclude={"notes": {"__all__": {"title", "detail"}}}),
         "tunnels": [t.model_dump() for t in analysis.tunnels[:MAX_TUNNELS]],
         "tunnels_truncated": max(0, len(analysis.tunnels) - MAX_TUNNELS),
         "issues": [

@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .. import __version__, config
 from ..detectors import build_issues
 from ..detectors.tls_alerts import _TLS_ALERT_NAMES
+from .quality import apply_quality_caveats, build_capture_quality, duplicate_key, is_duplicate
 from ..models import (
     AnalysisResult,
     Conversations,
@@ -69,6 +71,7 @@ class ConvState:
     syn_ts: Optional[float] = None
     synack_ts: Optional[float] = None
     synack_seen: bool = False
+    ack_seen: bool = False  # some segment acknowledged the peer (see analysis/quality.py)
     rst_ts: Optional[float] = None
     mss_client: Optional[int] = None
     mss_server: Optional[int] = None
@@ -278,6 +281,10 @@ class CaptureState:
     truncated_sections: set = field(default_factory=set)
     # Packets whose fields could not be parsed (malformed capture); never fatal.
     skipped_packets: int = 0
+    # Capture quality (analysis/quality.py)
+    duplicate_frames: int = 0
+    truncated_frames: int = 0
+    recent_frames: "OrderedDict[tuple, float]" = field(default_factory=OrderedDict)
     dns_queries_seen: int = 0
 
 
@@ -421,7 +428,8 @@ def _record_expert(state: "CaptureState", number: int, messages) -> None:
         entry.count += 1
 
 
-def _packet_extras(layers: dict, chain: List[str], expert_messages) -> dict:
+def _packet_extras(layers: dict, chain: List[str], expert_messages,
+                   duplicate: bool = False) -> dict:
     """Optional PacketRow fields (ports, TCP flags/seq/ack/window, flags...)."""
     extras: dict = {}
     quoted = "icmp" in chain or "icmpv6" in chain  # inner packet belongs to the error
@@ -447,6 +455,10 @@ def _packet_extras(layers: dict, chain: List[str], expert_messages) -> dict:
         elif fget(layers, "udp.srcport") is not None:
             extras["sport"] = _opt_int(fget(layers, "udp.srcport"))
             extras["dport"] = _opt_int(fget(layers, "udp.dstport"))
+    if duplicate:
+        # Wireshark's flags on a copied frame describe the copy, not the network.
+        extras["analysis"] = ["duplicate_frame"]
+        extras.pop("rtt_ms", None)
     if expert_messages:
         severity, _group, text = max(expert_messages, key=lambda m: _EXPERT_RANK[m[0]])
         extras["expert"] = severity
@@ -472,7 +484,18 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     src = fget(layers, "ip.src") or fget(layers, "ipv6.src")
     dst = fget(layers, "ip.dst") or fget(layers, "ipv6.dst")
 
-    expert_messages = _expert_messages(layers)
+    cap_len = _opt_int(fget(layers, "frame.cap_len"))
+    if cap_len is not None and cap_len < length:
+        state.truncated_frames += 1
+
+    # A copy of a frame seen a moment ago (port mirror, several interfaces) is
+    # kept in the totals and the packet list but left out of every analysis:
+    # Wireshark flags it as a retransmission / duplicate ACK, which it is not.
+    duplicate = is_duplicate(state.recent_frames, duplicate_key(layers, chain, src, dst), ts)
+    if duplicate:
+        state.duplicate_frames += 1
+
+    expert_messages = [] if duplicate else _expert_messages(layers)
     if expert_messages:
         _record_expert(state, int(fget(layers, "frame.number", "0") or 0), expert_messages)
 
@@ -494,7 +517,7 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             length=length,
             info=_sanitize(fget(layers, "_ws.col.info", "") or "", 200),
             stream=pkt_stream,
-            **_packet_extras(layers, chain, expert_messages),
+            **_packet_extras(layers, chain, expert_messages, duplicate),
         ))
 
     if src and dst:
@@ -518,6 +541,9 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     if bucket is not None:
         bucket[0] += 1
         bucket[1] += length
+
+    if duplicate:
+        return
 
     tcp_stream = fget(layers, "tcp.stream")
     udp_stream = fget(layers, "udp.stream")
@@ -544,6 +570,8 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
         )
         syn = field_bool(layers, "tcp.flags.syn")
         ack = field_bool(layers, "tcp.flags.ack")
+        if ack:
+            conv.ack_seen = True
         mss = fget(layers, "tcp.options.mss_val")
         if syn and not ack:
             if conv.syn_ts is None:
@@ -1105,7 +1133,8 @@ def analyze_pcap(
             if state.skipped_packets == 1:
                 _log.warning("Paquete con campos no interpretables; se omite y se sigue.")
 
-    issues = build_issues(state)
+    quality = build_capture_quality(state)
+    issues = apply_quality_caveats(build_issues(state), quality)
     if len(issues) > config.MAX_ISSUES:
         state.truncated_sections.add("issues")
         issues = issues[:config.MAX_ISSUES]
@@ -1129,6 +1158,7 @@ def analyze_pcap(
         tls_sessions=_build_tls_sessions(state),
         expert_info=_build_expert_info(state),
         resolved_names=_build_resolved_names(state),
+        capture_quality=quality,
         meta=Meta(
             engine_version=__version__,
             tshark_version=tshark_version(tshark_path),

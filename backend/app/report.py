@@ -209,6 +209,17 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
          str(len(analysis.issues))],
     ], col_widths=[34 * mm, 34 * mm, 34 * mm, 34 * mm, 34 * mm]))
 
+    if analysis.capture_quality.notes:
+        flow.append(Paragraph("Calidad de la captura", styles["h2"]))
+        for note in analysis.capture_quality.notes:
+            flow.append(Paragraph(
+                "<b>[%s]</b> %s" % ("AVISO" if note.severity == "warning" else "INFO",
+                                    _esc(note.title)),
+                ParagraphStyle("quality", parent=styles["body"],
+                               textColor=_SEVERITY_COLOR.get(note.severity, _INK)),
+            ))
+            flow.append(Paragraph(_esc(note.detail), styles["detail"]))
+
     if analysis.issues:
         flow.append(Paragraph("Problemas detectados", styles["h2"]))
         for issue in analysis.issues:

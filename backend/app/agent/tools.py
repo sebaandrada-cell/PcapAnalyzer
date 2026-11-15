@@ -61,6 +61,9 @@ def capture_overview(ctx: ToolContext) -> ToolResult:
     content = {
         "file": a.file.model_dump(),
         "summary": a.summary.model_dump(),
+        # Limits of the capture itself; read before trusting the findings below.
+        "capture_quality": a.capture_quality.model_dump(
+            exclude={"notes": {"__all__": {"title", "detail"}}}),
         "protocols": [p.model_dump() for p in a.protocols],
         "tcp_conversations": [c.model_dump() for c in _cap(tcp, "tcp_conversations", truncated)],
         "udp_conversations": [c.model_dump() for c in _cap(udp, "udp_conversations", truncated)],

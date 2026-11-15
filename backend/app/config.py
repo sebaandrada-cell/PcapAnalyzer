@@ -163,3 +163,16 @@ MAX_RESOLVED_NAMES = _int_env("MAX_RESOLVED_NAMES", 5000)
 
 # Packet list returned to the UI (Wireshark-style view), capped for size.
 PACKET_LIST_MAX = _int_env("PACKET_LIST_MAX", 1000)
+
+# --- Capture quality (limits of the capture itself, see analysis/quality.py) ---
+# A frame identical to one seen within this window is a capture duplicate (port
+# mirror copying ingress and egress, capture on several interfaces). A real
+# retransmission arrives after an RTO or a few RTTs, far outside it.
+DUP_FRAME_WINDOW_S = float(os.environ.get("DUP_FRAME_WINDOW_S", 0.001))
+DUP_FRAME_TRACK = _int_env("DUP_FRAME_TRACK", 256)  # recent frames remembered
+QUALITY_DUP_WARN_PCT = float(os.environ.get("QUALITY_DUP_WARN_PCT", 1.0))
+QUALITY_MIN_CONV_PACKETS = _int_env("QUALITY_MIN_CONV_PACKETS", 4)
+QUALITY_ONE_WAY_MIN_CONVS = _int_env("QUALITY_ONE_WAY_MIN_CONVS", 3)
+QUALITY_ONE_WAY_INFO_PCT = float(os.environ.get("QUALITY_ONE_WAY_INFO_PCT", 10.0))
+QUALITY_ONE_WAY_WARN_PCT = float(os.environ.get("QUALITY_ONE_WAY_WARN_PCT", 50.0))
+QUALITY_MIDSTREAM_INFO_PCT = float(os.environ.get("QUALITY_MIDSTREAM_INFO_PCT", 50.0))

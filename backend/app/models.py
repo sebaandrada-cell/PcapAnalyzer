@@ -257,6 +257,31 @@ class SessionInfo(BaseModel):
     content_allowed: bool
 
 
+class QualityNote(BaseModel):
+    """One limitation of the capture itself (not a network problem)."""
+
+    code: str  # duplicate_frames | one_way | truncated_frames | midstream | malformed_packets
+    severity: Literal["info", "warning"]
+    title: str
+    detail: str
+    title_en: str
+    detail_en: str
+
+
+class CaptureQuality(BaseModel):
+    """How far the capture can be trusted, assessed before reading the findings."""
+
+    verdict: Literal["good", "fair", "poor"] = "good"
+    duplicate_frames: int = 0
+    duplicate_pct: float = 0.0
+    truncated_frames: int = 0
+    tcp_conversations_checked: int = 0  # conversations where one side ACKs the other
+    one_way_conversations: int = 0
+    midstream_conversations: int = 0  # already open when the capture started
+    skipped_packets: int = 0
+    notes: List[QualityNote] = Field(default_factory=list)
+
+
 class Meta(BaseModel):
     engine_version: str
     tshark_version: str
@@ -281,6 +306,7 @@ class AnalysisResult(BaseModel):
     tls_sessions: List[TlsSession] = Field(default_factory=list)
     expert_info: List[ExpertEntry] = Field(default_factory=list)
     resolved_names: List[ResolvedName] = Field(default_factory=list)
+    capture_quality: CaptureQuality = Field(default_factory=CaptureQuality)
     meta: Meta
     # None when sessions are disabled or the analysis ran in another process.
     session: Optional[SessionInfo] = None
