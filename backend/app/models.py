@@ -262,6 +262,7 @@ class Meta(BaseModel):
     tshark_version: str
     analysis_duration_ms: int
     truncated_sections: List[str] = Field(default_factory=list)
+    skipped_packets: int = 0  # malformed packets left out of the analysis
 
 
 class AnalysisResult(BaseModel):

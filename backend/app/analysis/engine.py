@@ -7,6 +7,7 @@ the raw material for issue detection. Detection rules themselves live in
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -44,6 +45,9 @@ from ..tshark import (
     iter_packets,
     tshark_version,
 )
+
+
+_log = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -272,6 +276,8 @@ class CaptureState:
     # IP -> name learned from DNS answers (Wireshark "Resolved Addresses")
     resolved: Dict[str, str] = field(default_factory=dict)
     truncated_sections: set = field(default_factory=set)
+    # Packets whose fields could not be parsed (malformed capture); never fatal.
+    skipped_packets: int = 0
     dns_queries_seen: int = 0
 
 
@@ -356,6 +362,20 @@ _EXPERT_GROUPS = {
 _EXPERT_COUNTER = re.compile(r"\(#\d+\)")
 
 
+_EPOCH_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)")
+
+
+def _epoch(value: Optional[str], fallback: float) -> float:
+    """Parse frame.time_epoch tolerantly.
+
+    A record whose sub-second field is out of range makes tshark print
+    ``"12.(1000000000 nanoseconds)"``; keep the leading number instead of
+    aborting the whole analysis.
+    """
+    match = _EPOCH_RE.match(value or "")
+    return float(match.group(1)) if match else fallback
+
+
 def _opt_int(value: Optional[str]) -> Optional[int]:
     try:
         return int(value) if value is not None else None
@@ -435,7 +455,7 @@ def _packet_extras(layers: dict, chain: List[str], expert_messages) -> dict:
 
 
 def _consume_packet(state: CaptureState, layers: dict) -> None:
-    ts = float(fget(layers, "frame.time_epoch", "0") or 0)
+    ts = _epoch(fget(layers, "frame.time_epoch"), state.last_ts or 0.0)
     length = int(fget(layers, "frame.len", "0") or 0)
 
     state.packets += 1
@@ -1076,7 +1096,14 @@ def analyze_pcap(
     started = time.monotonic()
     state = CaptureState()
     for layers in iter_packets(tshark_path, pcap_path):
-        _consume_packet(state, layers)
+        try:
+            _consume_packet(state, layers)
+        except (ValueError, TypeError):
+            # One malformed packet must not cost the user the whole analysis.
+            # Only the count is kept: field values are capture data, never logged.
+            state.skipped_packets += 1
+            if state.skipped_packets == 1:
+                _log.warning("Paquete con campos no interpretables; se omite y se sigue.")
 
     issues = build_issues(state)
     if len(issues) > config.MAX_ISSUES:
@@ -1107,5 +1134,6 @@ def analyze_pcap(
             tshark_version=tshark_version(tshark_path),
             analysis_duration_ms=int((time.monotonic() - started) * 1000),
             truncated_sections=sorted(state.truncated_sections),
+            skipped_packets=state.skipped_packets,
         ),
     )
