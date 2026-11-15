@@ -68,6 +68,8 @@ def test_paging(client, big):
     assert second["offset"] == 5
     everything = _query(client, sid, filter="tcp.flags.syn == 1", limit=1000).json()
     assert everything["matched"] == 16 and everything["has_more"] is False  # 8 SYN + 8 SYN-ACK
+    past_end = _query(client, sid, filter="tcp.flags.syn == 1", offset=500).json()
+    assert past_end["rows"] == [] and past_end["matched"] == 16
 
 
 def test_empty_filter_returns_the_first_packets(client, big):
@@ -82,6 +84,9 @@ def test_invalid_filter_is_a_422_with_tsharks_reason(client, big):
 
     assert r.status_code == 422
     assert "Filtro no válido" in r.json()["detail"]
+    # tshark's reason, not its caret line
+    detail = _query(client, big["session"]["id"], filter="foo.bar == 1").json()["detail"]
+    assert "foo.bar" in detail and "^~" not in detail
 
 
 def test_limits_are_validated(client, big):
@@ -126,3 +131,19 @@ def test_busy_server_answers_429(client, big):
             except ValueError:
                 break
     assert r.status_code == 429
+
+
+def test_one_search_at_a_time_per_user(client, big):
+    """One token cannot hold every slot and block the other users."""
+    import hashlib
+
+    from app.agent import router
+
+    tenant = hashlib.sha256(b"test-token").hexdigest()
+    router._tenants_querying.add(tenant)
+    try:
+        r = _query(client, big["session"]["id"], filter="tcp")
+    finally:
+        router._tenants_querying.discard(tenant)
+    assert r.status_code == 429
+    assert _query(client, big["session"]["id"], filter="tcp").status_code == 200

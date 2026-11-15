@@ -75,6 +75,14 @@ class ConvState:
     synack_ts: Optional[float] = None
     synack_seen: bool = False
     ack_seen: bool = False  # some segment acknowledged the peer (see analysis/quality.py)
+    # Per direction: first ACK number seen, SYN sent, and whether that side
+    # acknowledged peer data that never appears in the capture.
+    fwd_first_ack: Optional[int] = None
+    rev_first_ack: Optional[int] = None
+    fwd_syn_sent: bool = False
+    rev_syn_sent: bool = False
+    fwd_acks_unseen: bool = False
+    rev_acks_unseen: bool = False
     rst_ts: Optional[float] = None
     mss_client: Optional[int] = None
     mss_server: Optional[int] = None
@@ -219,6 +227,7 @@ class TlsSessionState:
     cipher: Optional[str] = None
     sni: Optional[str] = None
     alert: Optional[str] = None
+    negotiated: Optional[str] = None  # raw version of the ServerHello (detectors/tls_legacy.py)
 
 
 @dataclass
@@ -234,6 +243,7 @@ class DhcpTxnState:
     # message types seen (1 discover, 2 offer, 3 request, 4 decline, 5 ack,
     # 6 nak, 7 release, 8 inform)
     types: set = field(default_factory=set)
+    requests: int = 0  # DISCOVER + REQUEST messages (retries included)
 
 
 @dataclass
@@ -290,6 +300,8 @@ class CaptureState:
     recent_frames: "OrderedDict[tuple, float]" = field(default_factory=OrderedDict)
     # Frame numbers of the duplicates, ascending (see query_packets).
     duplicate_numbers: array = field(default_factory=lambda: array("I"))
+    # TCP streams where a non-ACK frame was duplicated: the capture copies there.
+    mirrored_streams: set = field(default_factory=set)
     dns_queries_seen: int = 0
 
 
@@ -309,6 +321,25 @@ def _protocol_label(layers_chain: List[str]) -> str:
     while layers and layers[-1] in ("data", "data-text-lines", "ethertype"):
         layers.pop()
     return layers[-1] if layers else "unknown"
+
+
+def _track_acks(conv: "ConvState", forward: bool, syn: bool, ack: bool,
+                ack_number: Optional[int]) -> None:
+    """Note when a side acknowledges peer data (one-way capture detection)."""
+    side = "fwd" if forward else "rev"
+    if syn and not ack:
+        setattr(conv, side + "_syn_sent", True)
+        return
+    if not ack or ack_number is None:
+        return
+    first = getattr(conv, side + "_first_ack")
+    if first is None:
+        setattr(conv, side + "_first_ack", ack_number)
+        # An ACK after our own SYN means the peer's SYN-ACK existed.
+        if getattr(conv, side + "_syn_sent") and not syn:
+            setattr(conv, side + "_acks_unseen", True)
+    elif ack_number > first:
+        setattr(conv, side + "_acks_unseen", True)
 
 
 def _update_conversation(
@@ -503,10 +534,11 @@ def query_packets(
     display_filter: str,
     limit: int,
     offset: int = 0,
-) -> Tuple[List[PacketRow], bool]:
+) -> Tuple[List[PacketRow], bool, int]:
     """Rows matching a real Wireshark display filter, over the whole capture.
 
-    Returns ``(rows, has_more)``. tshark is stopped as soon as the page is
+    Returns ``(rows, has_more, matched)``; ``matched`` is the total number of
+    matching packets when ``has_more`` is false. tshark is stopped as soon as the page is
     full, so a filter matching millions of packets costs one page.
     """
     first_ts = analysis.summary.start_time_epoch or 0.0
@@ -544,7 +576,7 @@ def query_packets(
                 continue  # same tolerance as the analysis: skip a malformed packet
     finally:
         packets.close()
-    return rows, has_more
+    return rows, has_more, seen
 
 
 def _consume_packet(state: CaptureState, layers: dict) -> None:
@@ -572,7 +604,15 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     # A copy of a frame seen a moment ago (port mirror, several interfaces) is
     # kept in the totals and the packet list but left out of every analysis:
     # Wireshark flags it as a retransmission / duplicate ACK, which it is not.
-    duplicate = is_duplicate(state.recent_frames, duplicate_key(layers, chain, src, dst), ts)
+    dup_key, weak = duplicate_key(layers, chain, src, dst)
+    stream_tag = fget(layers, "tcp.stream")
+    if weak and stream_tag not in state.mirrored_streams:
+        duplicate = False  # could be a genuine duplicate ACK
+    else:
+        duplicate = is_duplicate(state.recent_frames, dup_key, ts)
+        if duplicate and not weak and stream_tag is not None \
+                and len(state.mirrored_streams) < config.MAX_CONVERSATIONS:
+            state.mirrored_streams.add(stream_tag)
     if duplicate:
         state.duplicate_frames += 1
         if len(state.duplicate_numbers) < config.MAX_DUPLICATE_FRAMES_TRACKED:
@@ -638,6 +678,8 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
         ack = field_bool(layers, "tcp.flags.ack")
         if ack:
             conv.ack_seen = True
+        forward = src == conv.src and int(fget(layers, "tcp.srcport", "0") or 0) == conv.src_port
+        _track_acks(conv, forward, syn, ack, _opt_int(fget(layers, "tcp.ack")))
         mss = fget(layers, "tcp.options.mss_val")
         if syn and not ack:
             if conv.syn_ts is None:
@@ -720,17 +762,29 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             state.http_pending.setdefault(stream_id, []).append(request)
         elif method is not None:
             state.truncated_sections.add("http_requests")
+        # Response time = request to the first byte of the answer. http.time runs
+        # to the last segment, which measures the download, not the server.
+        waiting = state.http_pending.get(stream_id)
+        if waiting and method is None and src == waiting[0].server \
+                and waiting[0].response_ms is None \
+                and (_opt_int(fget(layers, "tcp.len")) or 0) > 0:
+            waiting[0].response_ms = round(
+                max(0.0, ts - state.first_ts - waiting[0].time) * 1000, 1)
         response_code = fget(layers, "http.response.code")
         if response_code is not None:
             pending = state.http_pending.get(stream_id)
-            if pending:
-                pending.pop(0).status = int(response_code)
+            answered = pending.pop(0) if pending else None
+            if answered is not None:
+                answered.status = int(response_code)
             http_time = fget(layers, "http.time")
-            if http_time is not None and len(state.http_response_times) < config.MAX_HTTP_REQUESTS:
+            if http_time is not None:
                 try:
-                    state.http_response_times.append(float(http_time))
+                    seconds = float(http_time)
                 except ValueError:
-                    pass
+                    seconds = None
+                if seconds is not None and seconds >= 0:
+                    if len(state.http_response_times) < config.MAX_HTTP_REQUESTS:
+                        state.http_response_times.append(seconds)
 
     # TLS sessions (Wireshark TLS view): one row per stream
     if tcp_stream is not None and src and dst and "tls" in chain:
@@ -753,6 +807,10 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
                 session.client, session.server = src, dst
                 if sni:
                     session.sni = _sanitize(sni, 128)
+            if handshake_type == "2":
+                hello_version = fget(layers, "tls.handshake.version")
+                if hello_version is not None:
+                    session.negotiated = hello_version
             if handshake_type == "2" and cipher:
                 session.cipher = _TLS_CIPHERS.get(cipher, cipher)
             elif cipher and session.cipher is None:
@@ -819,6 +877,8 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             except ValueError:
                 kind = 0
             txn.types.add(kind)
+            if kind in (1, 3):
+                txn.requests += 1
             hostname = fget(layers, "dhcp.option.hostname")
             if hostname and txn.hostname is None:
                 txn.hostname = _sanitize(hostname, 64)

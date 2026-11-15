@@ -83,6 +83,7 @@ test('ports, numbers, ranges and sets', () => {
   assert.deepEqual(match('tcp.dstport == 443'), [1, 6])
   assert.deepEqual(match('udp.port == 53'), [4])
   assert.deepEqual(match('tcp.port in {80 443}'), [1, 2, 3, 6])
+  assert.deepEqual(match('tcp.port in {80, 443}'), [1, 2, 3, 6]) // tshark 4.x syntax
   assert.deepEqual(match('tcp.port in {8000..8100}'), [])
   assert.deepEqual(match('tcp.port in {50000..52000}'), [1, 2])
   assert.deepEqual(match('frame.number >= 4'), [4, 5, 6])

@@ -53,7 +53,7 @@ const IPV6_RE = /^[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?:\/\d{1,3})?/
 const HEX_RE = /^0[xX][0-9A-Fa-f]+/
 const NUM_RE = /^\d+(?:\.\d+)?/
 const WORD_RE = /^[A-Za-z_][A-Za-z0-9_.]*/
-const SYMBOLS = ['&&', '||', '==', '!=', '>=', '<=', '..', '>', '<', '!', '~', '(', ')', '{', '}']
+const SYMBOLS = ['&&', '||', '==', '!=', '>=', '<=', '..', '>', '<', '!', '~', '(', ')', '{', '}', ',']
 
 function tokenize(source: string): Token[] {
   const tokens: Token[] = []
@@ -529,6 +529,11 @@ class Parser {
     if (open.t !== 'sym' || open.v !== '{') throw new FilterSyntaxError('bad-value', open.pos, tokenText(open))
     const members: Array<(value: Value) => boolean> = []
     while (!this.isSym('}')) {
+      // Members may be separated by commas (tshark 4.x) or, as before, by spaces.
+      if (this.isSym(',')) {
+        this.next()
+        continue
+      }
       const token = this.next()
       if (token.t === 'end') throw new FilterSyntaxError('unclosed-set', token.pos)
       if (token.t === 'num' && this.isSym('..')) {

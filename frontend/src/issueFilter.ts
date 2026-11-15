@@ -21,7 +21,8 @@ export function issueFilter(issue: Issue): string | null {
 
   if (Array.isArray(ev['stream_ids'])) {
     const ids = ev['stream_ids'].map(num).filter((id): id is number => id !== null)
-    if (ids.length > 0) return `tcp.stream in {${ids.join(' ')}}`
+    // tshark 4.x requires commas between set members.
+    if (ids.length > 0) return `tcp.stream in {${ids.join(', ')}}`
   }
 
   const reporter = str(ev['reporter'])
@@ -44,6 +45,12 @@ export function issueFilter(issue: Issue): string | null {
     if (name) return `dns && _ws.col.info contains ${quoteString(name)}`
     if (server) return `dns && ${addr(server)}`
   }
+
+  if (issue.type.startsWith('http_')) {
+    const server = str(ev['server'])
+    return server ? `http && ${addr(server)}` : 'http'
+  }
+  if (issue.type.startsWith('dhcp_')) return 'dhcp'
 
   const ip = str(ev['ip'])
   if (issue.type === 'ip_duplicate' && ip) return `arp && _ws.col.info contains ${quoteString(ip)}`

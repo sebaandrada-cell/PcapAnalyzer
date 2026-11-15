@@ -11,7 +11,7 @@ function issue(type: string, evidence: Record<string, unknown>): Issue {
 test('TCP issues map to their stream', () => {
   assert.equal(issueFilter(issue('tcp_syn_rst', { stream_id: 3 })), 'tcp.stream eq 3')
   assert.equal(issueFilter(issue('tls_handshake_failure', { tcp_stream: 7 })), 'tcp.stream eq 7')
-  assert.equal(issueFilter(issue('tcp_resets', { stream_ids: [1, 4, 9] })), 'tcp.stream in {1 4 9}')
+  assert.equal(issueFilter(issue('tcp_resets', { stream_ids: [1, 4, 9] })), 'tcp.stream in {1, 4, 9}')
 })
 
 test('ICMP and DNS issues map to a filter on the reporter or the name', () => {
@@ -54,4 +54,17 @@ test('every generated filter compiles with the display-filter engine', () => {
 
 test('quoteString escapes quotes and backslashes', () => {
   assert.equal(quoteString('a\\b"c'), '"a\\\\b\\"c"')
+})
+
+test('HTTP, DHCP and legacy TLS issues map to filters the local subset can run', () => {
+  assert.equal(issueFilter(issue('http_server_errors', { server: '10.0.0.2' })), 'http && ip.addr == 10.0.0.2')
+  assert.equal(issueFilter(issue('http_slow', { server: '2001:db8::2' })), 'http && ipv6.addr == 2001:db8::2')
+  assert.equal(issueFilter(issue('dhcp_no_response', { clients: ['aa:bb'] })), 'dhcp')
+  assert.equal(
+    issueFilter(issue('tls_legacy_version', { server: '10.0.0.2', stream_ids: [4, 9] })),
+    'tcp.stream in {4, 9}', // tshark 4.x rejects space-separated sets
+  )
+  for (const filter of ['http && ip.addr == 10.0.0.2', 'dhcp', 'tcp.stream in {4, 9}']) {
+    assert.ok(compileFilter(filter, new Set(['http', 'dhcp'])).ok, filter)
+  }
 })

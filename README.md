@@ -187,6 +187,14 @@ el pcap con tshark (`capture_overview`, `filter_packets` con filtros reales de W
 automática y entrega un informe con evidencia (`[[pkt: N]]`, `[[filter: …]]`); después se
 pueden hacer preguntas de seguimiento por `POST /sessions/{id}/chat` (SSE).
 
+- **Filtros sobre toda la captura**: `POST /sessions/{id}/packets` con
+  `{"filter": "<display filter>", "limit": 1000, "offset": 0}` aplica un filtro real de
+  Wireshark con tshark a la captura conservada y devuelve filas con la misma forma que
+  `packet_list`. La lista del análisis solo contiene los primeros `PACKET_LIST_MAX` (1000)
+  paquetes; con esto la interfaz abre la evidencia de cualquier paquete («Buscar en toda la
+  captura», Intro en el filtro y los botones «Ver paquetes»). Solo cabeceras y metadatos.
+  Límites: `PACKET_QUERY_WORKERS` (2) búsquedas simultáneas (429), `PACKET_QUERY_TIMEOUT_S`
+  (60, 504), filtro validado por tshark (422).
 - La clave de cifrado vive solo en memoria: al reiniciar, los archivos huérfanos quedan
   ilegibles y se borran. `DELETE /sessions/{id}` borra la captura al momento; también lo hace
   «Analizar otra captura» en la interfaz.
@@ -296,6 +304,31 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 | `tcp_resets` | RST **después** de un handshake completo, agregados; `warning` si afecta a ≥ 10 conversaciones | `info` / `warning` |
 | `icmp_unreachable` | ICMP/ICMPv6 destino inalcanzable por reportador y código (puerto, host, red, prohibido por administración) | `warning` |
 | `icmp_ttl_exceeded` | ≥ 5 «TTL exceeded» (bucle de enrutamiento) o reensamblado agotado | `warning` |
+| `http_server_errors` | Respuestas HTTP 5xx por servidor; `critical` si son ≥ 50 % de ≥ 5 respuestas | `warning` / `critical` |
+| `http_client_errors` | ≥ 5 respuestas HTTP 4xx por servidor (401 y 407 no cuentan: son el reto de autenticación) | `info` / `warning` |
+| `http_slow` | Respuestas HTTP que tardan > 1 s desde la petición (`http.time`) | `warning` |
+| `dhcp_nak` | El servidor DHCP rechaza la petición (NAK) | `warning` |
+| `dhcp_declined` | El cliente rechaza la IP ofrecida (DECLINE): dirección ya en uso | `warning` |
+| `dhcp_no_response` | DISCOVER o REQUEST sin OFFER, ACK ni NAK | `warning` |
+| `tls_legacy_version` | El servidor negocia SSL 3.0, TLS 1.0 o TLS 1.1 (versión del ServerHello), por servidor | `warning` |
+
+### Calidad de la captura (`capture_quality`)
+
+Antes de leer los problemas hay que saber cuánto fiarse de la captura. El resultado incluye un
+bloque `capture_quality` con un veredicto (`good`, `fair`, `poor`) y notas sobre los límites de
+la propia captura, que la interfaz muestra encima de los hallazgos y que también reciben el
+agente de IA y el PDF:
+
+| Nota | Qué detecta | Efecto |
+|---|---|---|
+| `duplicate_frames` | Tramas idénticas a otra vista hace menos de 1 ms (port mirror que copia entrada y salida, captura en varias interfaces) | Se dejan fuera del análisis: no cuentan como retransmisiones ni ACK duplicados. Siguen en los totales y en la lista, atenuadas |
+| `one_way` | Conversaciones TCP donde un lado confirma datos que no están en la captura | Si son mayoría, los avisos de tipo «sin respuesta» (`dns_unanswered`, `ike_no_response`, `esp_one_way`, `dhcp_no_response`) bajan a `info` con una advertencia |
+| `truncated_frames` | Tramas recortadas por el límite de bytes por paquete (snaplen) | Aviso: HTTP, TLS o DNS pueden salir incompletos |
+| `midstream` | Conexiones ya abiertas al empezar la captura | Aviso: sin MSS, escalado de ventana ni tiempo de establecimiento |
+| `malformed_packets` | Paquetes con campos ilegibles | Se omiten y se cuentan; el análisis continúa |
+
+Umbrales: `DUP_FRAME_WINDOW_S`, `QUALITY_DUP_WARN_PCT`, `QUALITY_ONE_WAY_WARN_PCT`,
+`QUALITY_ONE_WAY_INFO_PCT`, `QUALITY_MIDSTREAM_INFO_PCT`.
 
 Umbrales configurables por entorno (`app/config.py`, nada hardcodeado): `RETRANS_WARN_PCT`, `RETRANS_CRIT_PCT`, `RETRANS_MIN_PACKETS`, `SYN_RST_MAX_DELAY_S`, `DNS_SLOW_THRESHOLD_S`, `DNS_NXDOMAIN_MIN`, `TCP_HANDSHAKE_SLOW_S`, `TCP_ZERO_WINDOW_MIN_EVENTS`, `MSS_LOW_THRESHOLD`, `PMTUD_MIN_FULLSIZE_RETRANS`, `FRAG_HIGH_PCT`, `ESP_ONE_WAY_MIN`, `IKE_NO_RESPONSE_MIN`, `TCP_DUP_ACK_MIN`, `TCP_OUT_OF_ORDER_MIN`, `TCP_LOST_SEGMENT_MIN`, `TCP_WINDOW_FULL_MIN`, `TCP_RESET_MIN_CONVS`, `ICMP_UNREACHABLE_MIN`, `ICMP_TTL_EXCEEDED_MIN`. Otras variables: `API_TOKENS`, `API_MAX_REQUESTS_PER_MINUTE`, `API_MAX_JOBS_PER_TOKEN`, `MAX_QUEUED_JOBS`, `MAX_UPLOAD_MB`, `MAX_DECOMPRESSED_MB`, `TSHARK_TIMEOUT_S`, `TSHARK_PATH`, `CORS_ORIGINS`, `TOP_TALKERS_LIMIT`.
 
@@ -334,6 +367,11 @@ cd backend
 
 - `test_detectors.py`: un test unitario por detector sobre estados sintéticos (no requiere tshark).
 - `test_analyze.py`: integración del endpoint contra `tests/fixtures/sample.pcap`, regenerado de forma determinista en cada ejecución por [pcap_builder.py](backend/tests/pcap_builder.py) (paquetes crafteados a mano, sin scapy). El fixture contiene deliberadamente: retransmisiones TCP (25 % de un stream), un SYN→RST inmediato, un zero window, un handshake TLS que termina en `handshake_failure`, consultas DNS rápida / lenta (700 ms) / sin respuesta, un stream con MSS 1240 y agujero negro PMTUD, un handshake de 600 ms, un ICMP Fragmentation Needed, un datagrama fragmentado completo y otro incompleto, ESP unidireccional, IKE sin respuesta e IKE sin ESP posterior, un SERVFAIL, tres NXDOMAIN y una IP duplicada anunciada por dos MACs. Estos tests se saltan automáticamente si tshark no está instalado.
+
+- `test_capture_quality.py`: robustez ante capturas malformadas y calidad de la captura
+  (tráfico sano duplicado por un mirror, captura unidireccional, snaplen, conexiones ya abiertas).
+- `test_packet_query.py`: filtros reales sobre toda la captura (`/sessions/{id}/packets`).
+- `test_detectors_l7.py`: detectores de HTTP, DHCP y TLS obsoleto.
 
 Seguridad: nunca se loguean payloads, el archivo subido se borra tras el análisis (o, con sesiones de investigación, se conserva cifrado con una clave que solo vive en memoria y se borra por inactividad), hay límite de tamaño de subida y los strings extraídos de la captura (p. ej. nombres DNS) se sanean antes de incluirse en la respuesta.
 

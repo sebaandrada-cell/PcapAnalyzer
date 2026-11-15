@@ -164,6 +164,17 @@ MAX_RESOLVED_NAMES = _int_env("MAX_RESOLVED_NAMES", 5000)
 # Packet list returned to the UI (Wireshark-style view), capped for size.
 PACKET_LIST_MAX = _int_env("PACKET_LIST_MAX", 1000)
 
+# --- Application-layer detectors (detectors/http_errors.py) ---
+HTTP_SLOW_THRESHOLD_S = float(os.environ.get("HTTP_SLOW_THRESHOLD_S", 1.0))
+HTTP_5XX_MIN = _int_env("HTTP_5XX_MIN", 1)
+HTTP_4XX_MIN = _int_env("HTTP_4XX_MIN", 5)
+# "Mostly failing": this share of at least this many responses raises the severity.
+HTTP_ERROR_CRIT_PCT = float(os.environ.get("HTTP_ERROR_CRIT_PCT", 50.0))
+HTTP_ERROR_CRIT_MIN_RESPONSES = _int_env("HTTP_ERROR_CRIT_MIN_RESPONSES", 5)
+# DISCOVER/REQUEST attempts from one MAC before "no answer" is reported: a capture
+# on another host sees a neighbour's broadcast but not the unicast OFFER/ACK.
+DHCP_NO_RESPONSE_MIN_ATTEMPTS = _int_env("DHCP_NO_RESPONSE_MIN_ATTEMPTS", 2)
+
 # --- Packet queries over the kept capture (POST /sessions/{id}/packets) ---
 PACKET_QUERY_MAX_ROWS = _int_env("PACKET_QUERY_MAX_ROWS", 1000)
 PACKET_QUERY_WORKERS = _int_env("PACKET_QUERY_WORKERS", 2)  # concurrent tshark runs

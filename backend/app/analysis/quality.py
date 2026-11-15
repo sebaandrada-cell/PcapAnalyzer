@@ -17,7 +17,9 @@ from ..tshark import field as fget
 
 # Findings that mean "the other side never answered": not trustworthy when the
 # capture only sees one direction of the traffic.
-NO_RESPONSE_TYPES = frozenset({"dns_unanswered", "ike_no_response", "esp_one_way"})
+NO_RESPONSE_TYPES = frozenset({
+    "dns_unanswered", "ike_no_response", "esp_one_way", "dhcp_no_response",
+})
 
 _ONE_WAY_CAVEAT = (
     " Ojo: la captura solo ve un solo sentido del tráfico en la mayoría de las "
@@ -37,20 +39,31 @@ def _nonzero_id(value: Optional[str]) -> bool:
 
 
 def duplicate_key(layers: dict, chain: List[str], src: Optional[str],
-                  dst: Optional[str]) -> Optional[Tuple]:
-    """Identity of a frame on the wire, or None when it cannot be established.
+                  dst: Optional[str]) -> Tuple[Optional[Tuple], bool]:
+    """Identity of a frame on the wire, and whether that identity is weak.
 
     TCP segments are identified by their header (sequence, ACK, flags, window,
     timestamp and SACK edges), which also works for IPv6 and for stacks that
-    send IP ID 0. Anything else needs a non-zero IPv4 ID.
+    send IP ID 0. Anything else needs a non-zero IPv4 ID. Returns
+    ``(None, False)`` when the frame cannot be identified.
+
+    The identity is *weak* for a pure ACK (no payload, no SYN/FIN/RST) without
+    a usable IP ID: genuine duplicate ACKs are byte-identical too, so such a
+    frame only counts as a copy where the capture is already known to duplicate
+    (see ``CaptureState.mirrored_streams``).
     """
     if not src or not dst or "icmp" in chain or "icmpv6" in chain:
-        return None  # ICMP errors quote another packet's fields
+        return None, False  # ICMP errors quote another packet's fields
     ip_id = fget(layers, "ip.id")
     strong = _nonzero_id(ip_id)
     frag = fget(layers, "ip.frag_offset") or "0"
     if fget(layers, "tcp.srcport") is not None:
         sack = layers.get("tcp_options_sack_re")
+        pure_ack = (
+            (fget(layers, "tcp.len") or "0") == "0"
+            and not any(fget(layers, flag) in ("True", "true", "1") for flag in (
+                "tcp.flags.syn", "tcp.flags.fin", "tcp.flags.reset"))
+        )
         return (
             src, dst, ip_id if strong else "", frag, "tcp",
             fget(layers, "tcp.srcport"), fget(layers, "tcp.dstport"),
@@ -60,14 +73,14 @@ def duplicate_key(layers: dict, chain: List[str], src: Optional[str],
             fget(layers, "tcp.flags.push"), fget(layers, "tcp.window_size"),
             fget(layers, "tcp.options.timestamp.tsval"),
             tuple(sack) if isinstance(sack, list) else sack,
-        )
+        ), pure_ack and not strong
     if strong:
         return (
             src, dst, ip_id, frag, fget(layers, "ip.proto"),
             fget(layers, "udp.srcport"), fget(layers, "udp.dstport"),
             fget(layers, "frame.len"),
-        )
-    return None
+        ), False
+    return None, False
 
 
 def is_duplicate(recent: "OrderedDict[Tuple, float]", key: Optional[Tuple], ts: float) -> bool:
@@ -76,6 +89,7 @@ def is_duplicate(recent: "OrderedDict[Tuple, float]", key: Optional[Tuple], ts: 
         return False
     previous = recent.get(key)
     if previous is not None and 0 <= ts - previous <= config.DUP_FRAME_WINDOW_S:
+        recent[key] = ts  # a third copy is compared with the second, not the first
         return True
     recent[key] = ts
     recent.move_to_end(key)
@@ -119,7 +133,12 @@ def build_capture_quality(state) -> CaptureQuality:
     relevant = [conv for conv in state.tcp_convs.values()
                 if conv.packets >= config.QUALITY_MIN_CONV_PACKETS]
     checked = [conv for conv in relevant if conv.ack_seen]
-    one_way = [conv for conv in checked if conv.bytes_fwd == 0 or conv.bytes_rev == 0]
+    # One-way means one side acknowledges data that never appears in the capture
+    # (its ACK number advances, or it completes a handshake whose SYN-ACK is
+    # missing). A side that only repeats the same ACK is talking to a dead peer.
+    one_way = [conv for conv in checked
+               if (conv.bytes_rev == 0 and conv.fwd_acks_unseen)
+               or (conv.bytes_fwd == 0 and conv.rev_acks_unseen)]
     one_way_pct = _pct(len(one_way), len(checked))
     if len(one_way) >= config.QUALITY_ONE_WAY_MIN_CONVS and \
             one_way_pct >= config.QUALITY_ONE_WAY_INFO_PCT:

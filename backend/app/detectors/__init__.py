@@ -9,9 +9,11 @@ from typing import List
 
 from ..models import Issue
 from . import (
+    dhcp_problems,
     dns_errors,
     dns_problems,
     duplicate_ip,
+    http_errors,
     icmp_ttl_exceeded,
     icmp_unreachable,
     ip_fragmentation,
@@ -26,6 +28,7 @@ from . import (
     tcp_window_full,
     tcp_zero_window,
     tls_alerts,
+    tls_legacy,
     vpn_tunnels,
 )
 
@@ -50,6 +53,9 @@ DETECTORS = [
     tcp_resets,
     icmp_unreachable,
     icmp_ttl_exceeded,
+    http_errors,
+    dhcp_problems,
+    tls_legacy,
 ]
 
 

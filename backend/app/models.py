@@ -177,6 +177,7 @@ class HttpRequestRow(BaseModel):
     host: str
     uri: str
     status: Optional[int] = None  # None while unanswered in the capture
+    response_ms: Optional[float] = None  # http.time: request -> response
 
 
 class DnsQueryRow(BaseModel):

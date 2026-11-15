@@ -36,6 +36,9 @@ router = APIRouter()
 _workers = threading.BoundedSemaphore(max(1, config.AGENT_WORKERS))
 # Each packet query is one tshark run over the capture: bound how many run at once.
 _packet_queries = threading.BoundedSemaphore(max(1, config.PACKET_QUERY_WORKERS))
+# One search at a time per user, so a single token cannot hold every slot.
+_tenants_querying: set = set()
+_tenants_lock = threading.Lock()
 
 
 def ai_available() -> bool:  # module attribute so tests can swap it
@@ -143,17 +146,24 @@ def session_packets(
     tshark = find_tshark()
     if tshark is None:
         raise HTTPException(status_code=503, detail=install_instructions())
+    busy = HTTPException(
+        status_code=429,
+        detail="Hay otras búsquedas en curso. Inténtalo de nuevo en unos segundos.",
+        headers={"Retry-After": "3"},
+    )
+    with _tenants_lock:
+        if principal.tenant_id in _tenants_querying:
+            raise busy
+        _tenants_querying.add(principal.tenant_id)
     if not _packet_queries.acquire(blocking=False):
-        raise HTTPException(
-            status_code=429,
-            detail="Hay otras búsquedas en curso. Inténtalo de nuevo en unos segundos.",
-            headers={"Retry-After": "3"},
-        )
+        with _tenants_lock:
+            _tenants_querying.discard(principal.tenant_id)
+        raise busy
     try:
         with session_store.decrypted_pcap(session) as pcap_path:
             if display_filter:
                 validate_filter(pcap_path, display_filter)
-            rows, has_more = query_packets(
+            rows, has_more, matched = query_packets(
                 tshark, pcap_path, session.analysis, display_filter, query.limit, query.offset)
     except (ToolTimeout, TsharkTimeoutError):
         raise HTTPException(
@@ -169,12 +179,14 @@ def session_packets(
         raise _not_found()  # the session expired while the query was running
     finally:
         _packet_queries.release()
+        with _tenants_lock:
+            _tenants_querying.discard(principal.tenant_id)
     return PacketQueryResult(
         filter=display_filter,
         rows=rows,
         offset=query.offset,
         has_more=has_more,
-        matched=None if has_more else query.offset + len(rows),
+        matched=None if has_more else matched,
     )
 
 

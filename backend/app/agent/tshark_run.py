@@ -95,8 +95,12 @@ def run_tshark_bounded(
         proc.stdout.close()
         proc.stderr.close()
     if not truncated and proc.returncode != 0:
-        tail = b"".join(err_parts).decode("utf-8", "replace").strip().splitlines()
-        raise ToolError(tail[-1] if tail else "tshark terminó con error %d." % proc.returncode)
+        lines = [ln.strip() for ln in
+                 b"".join(err_parts).decode("utf-8", "replace").strip().splitlines() if ln.strip()]
+        # tshark prints the reason on a "tshark: ..." line, then the filter and a
+        # caret line pointing at the error; the reason is what helps.
+        reason = next((ln for ln in lines if ln.startswith("tshark:")), lines[-1] if lines else "")
+        raise ToolError(reason or "tshark terminó con error %d." % proc.returncode)
     return b"".join(out_parts).decode("utf-8", "replace"), truncated
 
 

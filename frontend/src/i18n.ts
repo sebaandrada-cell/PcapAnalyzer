@@ -222,6 +222,7 @@ const es: Dict = {
       zero_window_probe: 'Sondeo de ventana cero',
       window_update: 'Actualización de ventana',
       keep_alive: 'Keep-alive',
+      duplicate_frame: 'Trama duplicada por la captura',
     },
     err: {
       'unexpected-char': 'Carácter inesperado «{arg}» (posición {pos})',
@@ -697,6 +698,7 @@ const en: Dict = {
       zero_window_probe: 'Zero-window probe',
       window_update: 'Window update',
       keep_alive: 'Keep-alive',
+      duplicate_frame: 'Frame duplicated by the capture',
     },
     err: {
       'unexpected-char': 'Unexpected character “{arg}” (position {pos})',

@@ -38,6 +38,21 @@ _NEXT_STEP_BY_TYPE = {
                        "buffer a tiempo.",
     "tcp_slow_handshake": "Mide el RTT hacia el servidor y su carga: el SYN-ACK "
                           "tarda demasiado.",
+    "http_server_errors": "Revisa los logs de la aplicación y de sus dependencias "
+                          "(backend, base de datos, proxy inverso) en el momento de "
+                          "los errores 5xx.",
+    "http_client_errors": "Identifica qué cliente y qué rutas generan los 4xx: URL "
+                          "obsoletas, credenciales o un límite de peticiones.",
+    "http_slow": "Compara el tiempo de respuesta HTTP con el RTT del saludo TCP: si la "
+                 "red es rápida, perfila la aplicación o su base de datos.",
+    "dhcp_nak": "Comprueba que solo hay un servidor DHCP por segmento y que el ámbito "
+                "coincide con la subred del cliente.",
+    "dhcp_declined": "Busca el equipo con IP fija dentro del rango DHCP y exclúyela "
+                     "del ámbito o cambia su dirección.",
+    "dhcp_no_response": "Verifica que el servidor DHCP está activo y con direcciones "
+                        "libres, y que la VLAN tiene configurado el relay (ip helper).",
+    "tls_legacy_version": "Habilita TLS 1.2 o 1.3 en el servidor y desactiva SSL 3.0, "
+                          "TLS 1.0 y TLS 1.1.",
 }
 
 # English counterpart of _NEXT_STEP_BY_TYPE. Keep both dicts in sync: a missing
@@ -69,6 +84,20 @@ _NEXT_STEP_BY_TYPE_EN = {
                        "draining its buffer in time.",
     "tcp_slow_handshake": "Measure the RTT to the server and its load: the SYN-ACK "
                           "takes too long.",
+    "http_server_errors": "Check the application logs and its dependencies (backend, "
+                          "database, reverse proxy) at the time of the 5xx errors.",
+    "http_client_errors": "Identify which client and paths produce the 4xx: stale "
+                          "URLs, credentials or a rate limit.",
+    "http_slow": "Compare the HTTP response time with the TCP handshake RTT: if the "
+                 "network is fast, profile the application or its database.",
+    "dhcp_nak": "Make sure there is a single DHCP server per segment and its scope "
+                "matches the client's subnet.",
+    "dhcp_declined": "Find the host with a static IP inside the DHCP range and exclude "
+                     "it from the scope or change its address.",
+    "dhcp_no_response": "Verify the DHCP server is up with free addresses and that the "
+                        "VLAN has the relay (ip helper) configured.",
+    "tls_legacy_version": "Enable TLS 1.2 or 1.3 on the server and disable SSL 3.0, "
+                          "TLS 1.0 and TLS 1.1.",
 }
 
 DEMO_MARK = "_(modo demo: texto generado sin IA — configura ANTHROPIC_API_KEY para el diagnóstico real)_"

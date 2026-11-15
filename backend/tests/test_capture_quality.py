@@ -350,3 +350,131 @@ def test_llm_context_and_pdf_include_the_capture_quality():
     clean = "\n".join(page.extract_text() for page in
                       PdfReader(io.BytesIO(build_report(make_analysis()))).pages)
     assert "Calidad de la captura" not in clean
+
+
+# ── Review fixes: false duplicates and false one-way verdicts ────────────
+
+def with_ip_id(frame: bytes, ip_id: int) -> bytes:
+    """Rewrite the IPv4 ID of an Ethernet frame and fix the header checksum."""
+    header = bytearray(frame[14:34])
+    header[4:6] = struct.pack("!H", ip_id)
+    header[10:12] = b"\x00\x00"
+    header[10:12] = struct.pack("!H", pb._checksum(bytes(header)))
+    return frame[:14] + bytes(header) + frame[34:]
+
+
+def _lost_segment_with_dup_acks(gap: float = 0.00005):
+    """seg2 is lost; the receiver repeats the same ACK three times, 50 us apart."""
+    c, s, cp, sp = "10.1.0.1", "10.2.0.1", 20000, 443
+    size, pkts = 500, []
+    pkts.append((0.000, _a2b(pb.tcp(c, s, cp, sp, 1000, 0, pb.SYN))))
+    pkts.append((0.001, _b2a(pb.tcp(s, c, sp, cp, 5000, 1001, pb.SYN | pb.ACK))))
+    pkts.append((0.002, _a2b(pb.tcp(c, s, cp, sp, 1001, 5001, pb.ACK))))
+    seq = 1001
+    pkts.append((0.010, _a2b(pb.tcp(c, s, cp, sp, seq, 5001, pb.PSH | pb.ACK, payload=b"a" * size))))
+    ack = seq + size
+    pkts.append((0.012, _b2a(pb.tcp(s, c, sp, cp, 5001, ack, pb.ACK))))
+    # seg2 (ack .. ack+size) never reaches the capture; seg3..seg5 do.
+    t = 0.020
+    for n in range(3):
+        start = ack + size * (n + 1)
+        pkts.append((t, _a2b(pb.tcp(c, s, cp, sp, start, 5001, pb.PSH | pb.ACK, payload=b"b" * size))))
+        t += gap
+        pkts.append((t, _b2a(pb.tcp(s, c, sp, cp, 5001, ack, pb.ACK))))  # duplicate ACK
+        t += gap
+    return pkts
+
+
+@requires_tshark
+def test_genuine_duplicate_acks_without_ip_id_are_not_capture_copies(tmp_path):
+    packets = [(ts, with_ip_id(fr, 0)) for ts, fr in _lost_segment_with_dup_acks()]
+    path = tmp_path / "dupack.pcap"
+    write_packets(path, packets)
+
+    result = analyze(path)
+
+    assert result.capture_quality.duplicate_frames == 0
+    assert result.capture_quality.verdict == "good"
+    assert result.conversations.tcp[0].dup_acks == 3
+
+
+@requires_tshark
+def test_mirror_without_ip_id_still_drops_every_copy(tmp_path):
+    base = [(ts, with_ip_id(fr, 0)) for ts, fr in healthy_flows()]
+    path = tmp_path / "mirror_id0.pcap"
+    write_packets(path, mirrored(base))
+
+    result = analyze(path)
+
+    assert result.issues == []
+    assert result.capture_quality.duplicate_frames == len(base)
+
+
+@requires_tshark
+def test_mirror_with_unique_ip_ids_drops_every_copy(tmp_path):
+    base = [(ts, with_ip_id(fr, 100 + n)) for n, (ts, fr) in enumerate(healthy_flows())]
+    path = tmp_path / "mirror_ids.pcap"
+    write_packets(path, mirrored(base))
+
+    result = analyze(path)
+
+    assert result.issues == []
+    assert result.capture_quality.duplicate_frames == len(base)
+
+
+def test_a_third_copy_close_to_the_second_is_also_a_duplicate():
+    from collections import OrderedDict
+
+    from app.analysis.quality import is_duplicate
+
+    recent: OrderedDict = OrderedDict()
+    assert is_duplicate(recent, ("k",), 0.0) is False
+    assert is_duplicate(recent, ("k",), 0.0008) is True
+    assert is_duplicate(recent, ("k",), 0.0015) is True  # 0.7 ms after the second copy
+    assert is_duplicate(recent, ("k",), 0.5) is False     # a genuine repeat much later
+
+
+def _dead_server_midstream(n_flows: int = 4):
+    """Connections already open; the client keeps retransmitting, the server is gone."""
+    pkts, t = [], 0.0
+    for flow in range(n_flows):
+        c, s, cp = "10.1.0.%d" % (flow + 1), "10.2.0.1", 30000 + flow
+        data = _a2b(pb.tcp(c, s, cp, 443, 7000, 9000, pb.PSH | pb.ACK, payload=b"z" * 300))
+        for delay in (0.0, 0.2, 0.6, 1.4):
+            pkts.append((t + delay, data))
+        t += 0.01
+    for txid in range(4):
+        query = pb.udp("10.1.0.1", "10.9.9.9", 40000 + txid, 53,
+                       pb.dns_query(0x100 + txid, "svc%d.example" % txid))
+        pkts.append((3.0 + txid * 0.1, _a2b(query)))
+    return sorted(pkts, key=lambda item: item[0])
+
+
+@requires_tshark
+def test_a_dead_server_is_not_a_one_way_capture(tmp_path):
+    path = tmp_path / "dead.pcap"
+    write_packets(path, _dead_server_midstream())
+
+    result = analyze(path)
+
+    assert all(n.code != "one_way" for n in result.capture_quality.notes)
+    unanswered = [i for i in result.issues if i.type == "dns_unanswered"]
+    assert unanswered and all(i.severity == "warning" for i in unanswered)
+
+
+@requires_tshark
+def test_client_side_of_a_download_is_a_one_way_capture(tmp_path):
+    """Only the client's ACKs are visible and they keep acknowledging new data."""
+    pkts = []
+    for flow in range(4):
+        c, s, cp = "10.1.0.%d" % (flow + 1), "10.2.0.1", 31000 + flow
+        for n in range(6):
+            pkts.append((flow * 0.1 + n * 0.01,
+                         _a2b(pb.tcp(c, s, cp, 443, 7000, 9000 + 1400 * n, pb.ACK))))
+    path = tmp_path / "client_side.pcap"
+    write_packets(path, sorted(pkts, key=lambda item: item[0]))
+
+    quality = analyze(path).capture_quality
+
+    assert quality.one_way_conversations == 4
+    assert next(n for n in quality.notes if n.code == "one_way").severity == "warning"

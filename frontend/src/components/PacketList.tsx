@@ -360,10 +360,15 @@ export default function PacketList({
             aria-label={t('packets.title')}
             onChange={(event) => {
               setFilter(event.target.value)
-              if (!event.target.value.trim() && remote) clearRemote()
+              // Editing drops a stale server error; emptying the box also stops a
+              // pending search and returns to the sample.
+              if (remoteStatus?.kind === 'error') setRemoteStatus(null)
+              if (!event.target.value.trim()) clearRemote()
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && canSearchAll) void searchAll(filter)
+              if (event.key === 'Enter' && canSearchAll && remoteStatus?.kind !== 'loading') {
+                void searchAll(filter)
+              }
             }}
           />
           {canSearchAll && (

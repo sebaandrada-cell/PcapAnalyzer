@@ -11,8 +11,10 @@ from ..models import Issue
 def detect(state) -> List[Issue]:
     issues: List[Issue] = []
 
-    if state.packets and state.frag_packets:
-        pct = 100.0 * state.frag_packets / state.packets
+    # Frames copied by the capture are not traffic (see analysis/quality.py).
+    packets = state.packets - state.duplicate_frames
+    if packets > 0 and state.frag_packets:
+        pct = 100.0 * state.frag_packets / packets
         if pct >= config.FRAG_HIGH_PCT:
             issues.append(
                 Issue(
@@ -24,7 +26,7 @@ def detect(state) -> List[Issue]:
                         "%d de %d paquetes son fragmentos IP (%.1f%%, umbral %.1f%%). "
                         "La fragmentación degrada el rendimiento y suele indicar un "
                         "MTU mal dimensionado (túneles, VPNs, jumbo frames)."
-                        % (state.frag_packets, state.packets, pct,
+                        % (state.frag_packets, packets, pct,
                            config.FRAG_HIGH_PCT)
                     ),
                     title_en="High IP fragmentation (%.1f%% of packets)" % pct,
@@ -32,12 +34,12 @@ def detect(state) -> List[Issue]:
                         "%d of %d packets are IP fragments (%.1f%%, threshold "
                         "%.1f%%). Fragmentation hurts performance and usually "
                         "points to a mis-sized MTU (tunnels, VPNs, jumbo frames)."
-                        % (state.frag_packets, state.packets, pct,
+                        % (state.frag_packets, packets, pct,
                            config.FRAG_HIGH_PCT)
                     ),
                     evidence={
                         "fragment_packets": state.frag_packets,
-                        "total_packets": state.packets,
+                        "total_packets": packets,
                         "fragment_pct": round(pct, 2),
                         "datagrams": len(state.frag_groups),
                     },

@@ -156,6 +156,8 @@ export interface HttpRequestRow {
   host: string
   uri: string
   status: number | null
+  /** Request to response time (http.time); absent in results from before 1.4.0. */
+  response_ms?: number | null
 }
 
 export interface DnsQueryRow {
