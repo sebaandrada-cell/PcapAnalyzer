@@ -225,6 +225,28 @@ export interface Meta {
   truncated_sections: string[]
 }
 
+export interface QualityNote {
+  code: string
+  severity: 'info' | 'warning'
+  title: string
+  detail: string
+  title_en: string
+  detail_en: string
+}
+
+/** Limits of the capture itself, assessed before the findings. */
+export interface CaptureQuality {
+  verdict: 'good' | 'fair' | 'poor'
+  duplicate_frames: number
+  duplicate_pct: number
+  truncated_frames: number
+  tcp_conversations_checked: number
+  one_way_conversations: number
+  midstream_conversations: number
+  skipped_packets: number
+  notes: QualityNote[]
+}
+
 export interface AnalysisResult {
   file: FileInfo
   summary: Summary
@@ -241,6 +263,8 @@ export interface AnalysisResult {
   tls_sessions: TlsSession[]
   expert_info?: ExpertEntry[]
   resolved_names?: ResolvedName[]
+  // Absent in results produced before 1.4.0 (e.g. an older demo.json).
+  capture_quality?: CaptureQuality
   meta: Meta
   // null when sessions are disabled or the analysis ran in another process
   session?: SessionInfo | null

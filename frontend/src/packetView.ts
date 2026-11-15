@@ -3,13 +3,15 @@
 import type { PacketRow, ResolvedName } from './api.ts'
 
 export type TimeFormat = 'relative' | 'delta' | 'absolute'
-export type RowColor = 'bad' | 'rst' | 'synfin' | 'icmp' | 'dns' | 'tls'
+export type RowColor = 'dup' | 'bad' | 'rst' | 'synfin' | 'icmp' | 'dns' | 'tls'
 
 /** Colouring rules, first match wins (same idea as Wireshark's default coloring rules). */
 export function rowColor(row: PacketRow): RowColor | null {
   const flags = row.tcp_flags ?? []
   const analysis = row.analysis ?? []
   const protocol = row.protocol.toLowerCase()
+  // A copy made by the capture (port mirror) is not a network event.
+  if (analysis.includes('duplicate_frame')) return 'dup'
   if (row.expert === 'error') return 'bad'
   if (analysis.some((a) => a !== 'window_update' && a !== 'keep_alive')) return 'bad'
   if (flags.includes('RST')) return 'rst'
@@ -21,7 +23,7 @@ export function rowColor(row: PacketRow): RowColor | null {
   return null
 }
 
-export const ROW_COLORS: RowColor[] = ['bad', 'rst', 'synfin', 'icmp', 'dns', 'tls']
+export const ROW_COLORS: RowColor[] = ['bad', 'rst', 'synfin', 'icmp', 'dns', 'tls', 'dup']
 
 /** Time cell for a row. `previous` is the previous *displayed* row (for delta). */
 export function formatPacketTime(

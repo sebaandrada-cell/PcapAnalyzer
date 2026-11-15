@@ -10,6 +10,7 @@ import Header from './components/Header'
 import HttpRequests from './components/HttpRequests'
 import ServiceResponseTimes from './components/ServiceResponseTimes'
 import TlsSessions from './components/TlsSessions'
+import CaptureQuality from './components/CaptureQuality'
 import ExpertInfo from './components/ExpertInfo'
 import PacketList from './components/PacketList'
 import { nameMap } from './packetView'
@@ -100,6 +101,7 @@ function Dashboard({ demo }: { demo?: DemoData }) {
       <SettingsBar />
       {demo && <DemoBanner />}
       <Header result={result} diagnosis={reportText} demo={Boolean(demo)} onReset={() => resetAll()} />
+      <CaptureQuality quality={result.capture_quality} />
       <InvestigationPanel
         result={result}
         demo={Boolean(demo)}

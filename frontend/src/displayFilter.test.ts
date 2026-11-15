@@ -45,6 +45,13 @@ function errorOf(filter: string): string {
   return compiled.error.code
 }
 
+test('frames duplicated by the capture do not count as TCP analysis problems', () => {
+  const compiled = compileFilter('tcp.analysis.flags')
+  assert.ok(compiled.ok)
+  assert.equal(compiled.test({ ...syn, analysis: ['duplicate_frame'] }), false)
+  assert.equal(compiled.test({ ...syn, analysis: ['retransmission'] }), true)
+})
+
 test('empty filter matches everything', () => {
   const compiled = compileFilter('   ')
   assert.ok(compiled.ok && compiled.empty)

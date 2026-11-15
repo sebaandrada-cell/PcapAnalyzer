@@ -171,6 +171,7 @@ const es: Dict = {
       icmp: 'ICMP',
       dns: 'DNS',
       tls: 'TLS',
+      dup: 'Trama duplicada (captura)',
     },
     exportCsv: 'Exportar CSV',
     exportHint: 'Descarga las filas visibles',
@@ -220,6 +221,11 @@ const es: Dict = {
       'bad-operator': 'El operador no se puede usar con «{arg}» (posición {pos})',
       'bad-regex': 'Expresión regular no válida «{arg}» (posición {pos})',
     },
+  },
+  quality: {
+    title: 'Calidad de la captura',
+    subtitle: 'Límites de la propia captura, no problemas de la red. Léelos antes que los hallazgos: indican cuánto fiarse de ellos.',
+    verdict: { good: 'Buena', fair: 'Con matices', poor: 'Limitada' },
   },
   expert: {
     title: 'Información experta',
@@ -626,6 +632,7 @@ const en: Dict = {
       icmp: 'ICMP',
       dns: 'DNS',
       tls: 'TLS',
+      dup: 'Duplicated frame (capture)',
     },
     exportCsv: 'Export CSV',
     exportHint: 'Download the visible rows',
@@ -675,6 +682,11 @@ const en: Dict = {
       'bad-operator': 'The operator cannot be used with “{arg}” (position {pos})',
       'bad-regex': 'Invalid regular expression “{arg}” (position {pos})',
     },
+  },
+  quality: {
+    title: 'Capture quality',
+    subtitle: 'Limits of the capture itself, not network problems. Read them before the findings: they tell you how far to trust them.',
+    verdict: { good: 'Good', fair: 'With caveats', poor: 'Limited' },
   },
   expert: {
     title: 'Expert information',

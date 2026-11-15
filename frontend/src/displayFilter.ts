@@ -264,7 +264,8 @@ const FIELDS: Record<string, FieldDef> = {
   'tcp.analysis.keep_alive': { type: 'bool', get: (r) => analysis(r, 'keep_alive') },
   'tcp.analysis.flags': {
     type: 'bool',
-    get: (r) => ((r.analysis ?? []).length > 0 ? true : undefined),
+    // "duplicate_frame" is our own mark for a capture artefact, not a TCP problem.
+    get: (r) => ((r.analysis ?? []).some((flag) => flag !== 'duplicate_frame') ? true : undefined),
   },
   // Wireshark expresses RELATIVE_TIME in seconds.
   'tcp.analysis.ack_rtt': {

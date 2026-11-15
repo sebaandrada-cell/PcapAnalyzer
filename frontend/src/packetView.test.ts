@@ -20,6 +20,11 @@ test('colouring rules, first match wins', () => {
   assert.equal(rowColor(row({ analysis: ['retransmission'], tcp_flags: ['RST'] })), 'bad')
 })
 
+test('a frame duplicated by the capture is muted, never a problem', () => {
+  assert.equal(rowColor(row({ analysis: ['duplicate_frame'] })), 'dup')
+  assert.equal(rowColor(row({ analysis: ['duplicate_frame'], tcp_flags: ['RST'] })), 'dup')
+})
+
 test('time formats', () => {
   const a = row({ time: 1.5 })
   const b = row({ number: 2, time: 1.75 })

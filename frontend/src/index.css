@@ -1394,3 +1394,55 @@ button.link {
     display: none;
   }
 }
+
+/* Capture quality: limits of the capture itself, shown above the findings. */
+.quality {
+  margin-bottom: 20px;
+  border-left: 4px solid var(--ink-muted);
+}
+.quality-poor {
+  border-left-color: var(--status-warning);
+}
+.quality-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+  background: var(--wash);
+  color: var(--ink);
+}
+.quality-badge-poor {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+}
+.quality-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.quality-note {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--wash);
+  overflow-wrap: anywhere;
+}
+.quality-note-warning {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+}
+.data-table tr.row-dup td,
+.color-legend .row-dup {
+  color: var(--ink-muted);
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--ink-muted) 12%, transparent) 6px 12px
+  );
+}
