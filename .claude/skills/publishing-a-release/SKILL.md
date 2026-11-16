@@ -90,8 +90,11 @@ it does not match.
    open `https://gumroad.com/products/hspgx/edit/content`, "Upload files" with
    the file input (ref from `find "Upload"`), pick
    `release/pcapanalyzer-X.Y.Z.tar.gz`, wait for the new row, open the `⋮`
-   menu of the OLD row → "Delete", click "Save changes", **reload the page and
-   read it**: exactly one row, `pcapanalyzer-X.Y.Z.tar GZ · <size>`. The
+   menu of the OLD row → "Delete". That only takes the file off the page: it
+   then shows up in the notice "These files are attached to this product but
+   not on any page"; press its "Remove" too (no confirmation, permanent).
+   Click "Save changes", **reload the page and read it**: exactly one row,
+   `pcapanalyzer-X.Y.Z.tar GZ · <size>`, and no attached-files notice. The
    free product `/l/pcapanalyzer-demo` (id nnesgj) carries no file.
    Product page texts: `https://gumroad.com/products/hspgx/edit`; after
    saving, read the public page `https://sebaandrada6.gumroad.com/l/hspgx`
@@ -138,6 +141,8 @@ it does not match.
 ## Common mistakes
 
 - Uploading to Gumroad without deleting the old row: buyers get two files.
+- Deleting the old row but not pressing "Remove" in the attached-files
+  notice: the old file stays attached to the product.
 - Saying "subido" without reloading the Gumroad page. Save can fail silently.
 - Quoting a sha256 from a previous build. Rebuild after any commit.
 - Updating the version but not the public numbers (or the reverse).
