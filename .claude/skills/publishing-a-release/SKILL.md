@@ -18,9 +18,11 @@ the owner's explicit OK for that specific action, in that specific session.
 - The agent cannot `git push` (the permission classifier denies it). Give the
   owner the exact command; never claim the push happened. The owner running
   the push is their consent to the beta deploy: say so when giving the command.
-- The release request itself covers the commits it needs (version, texts,
-  bookkeeping) directly on `main`. Features go on branches; release
-  bookkeeping does not.
+- The owner's rule: one change = one new branch + one PR, and no commit,
+  push, merge or deploy unless asked in that session. A release goes on a
+  `release/X.Y.Z` branch cut from `main`; the owner pushes it and merges the
+  PR (or asks for a local merge). Build the bundle from the release branch
+  HEAD: merging it fast-forward gives the same commit, so the sha256 holds.
 - The bundle is reproducible: `git archive` + `gzip -n`, so the same commit
   gives the same bytes, and CI's bundle has the same content. Files marked
   `export-ignore` (`.claude`, `PLAN-DIFUSION.md`, `landing.html`, `scripts`,
@@ -34,13 +36,13 @@ the owner's explicit OK for that specific action, in that specific session.
   the hosted beta. Render needs ~2 min and a cold start; `curl` to Vercel gets
   HTTP 429 from the firewall challenge, verify Vercel with a browser.
 - Docker is not installed on the owner's Mac. The buyer-side test of the bundle
-  runs in CI (`Release bundle check`, 21 checks through the shipped nginx).
+  runs in CI (`Release bundle check`, 22 checks through the shipped nginx).
 - `backend/.venv` is the system Python 3.9 (CLAUDE.md says 3.12; the code
   stays 3.9-compatible on purpose). Node 24 is in `/usr/local/bin`.
 
 ## Procedure
 
-Work on `main` with a clean tree. Every step has an expected output; stop when
+Work on a `release/X.Y.Z` branch with a clean tree. Every step has an expected output; stop when
 it does not match.
 
 1. **Preconditions.** `git status --porcelain --untracked-files=no` empty.
@@ -56,8 +58,9 @@ it does not match.
 3. **Public claims.** Grep the texts for numbers that may have changed and fix
    them everywhere at once: `README.md`, `QUICKSTART.md`, `landing.html`,
    `PLAN-DIFUSION.md`, `marketing/linkedin.md`, and the Gumroad description.
-   Current claims: **18 detectores**, **21 comprobaciones** del bundle,
-   investigación con IA, filtros estilo Wireshark. The count of checks is
+   Current claims (1.4.0): **21 detectores**, **22 comprobaciones** del
+   bundle, la muestra da **18 problemas**, investigación con IA, calidad de
+   la captura, filtros reales de Wireshark sobre toda la captura. The count of checks is
    `grep -c 'ok "' scripts/verify-bundle.sh`. For a bug-fix release where
    nothing public changed, skip this step, step 10 and the Gumroad
    description; `git diff --stat <previous release commit> -- landing.html
@@ -75,11 +78,12 @@ it does not match.
    ```
    Expected: every line `✔`, exit 0. Any `✘` deletes the tarball: fix, commit,
    rebuild. Record the sha256; it is the one the owner compares later.
-7. **Push and CI** (owner runs the push):
+7. **Push and CI** (owner runs the push of the release branch and opens or
+   merges the PR; only the merge into `main` deploys the beta):
    ```bash
-   cd /Users/sebas/Documents/Claude/wireapp && git push origin main
+   cd /Users/sebas/Documents/Claude/wireapp && git push -u origin release/X.Y.Z
    ```
-   Then `gh run list --branch main --limit 3`: `Release bundle check` and
+   After the merge, `gh run list --branch main --limit 3`: `Release bundle check` and
    `Frontend checks` must be `completed/success`. CI builds the bundle from the
    same commit, so a green run validates the local tarball.
 8. **Gumroad** (needs OK; use Claude in Chrome, the owner is logged in):
@@ -125,7 +129,7 @@ it does not match.
 
 | Artifact | Where | Verified by |
 |---|---|---|
-| Bundle | `release/pcapanalyzer-X.Y.Z.tar.gz` | build script ✔ + CI 21/21 + sha256 of real download |
+| Bundle | `release/pcapanalyzer-X.Y.Z.tar.gz` | build script ✔ + CI 22/22 + sha256 of real download |
 | Gumroad | `gumroad.com/products/hspgx/edit/content` | reload shows one file |
 | Landing | `landing.html` → artifact ab64246d… | parity diff, then publish with `url` |
 | Hosted beta | push to `main` | `/health` version, `#demo` in browser |
