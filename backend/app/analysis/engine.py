@@ -70,6 +70,9 @@ class ConvState:
     last_ts: float = 0.0
     # TCP-only signals
     retransmissions: int = 0
+    # Data the receiver had already acknowledged: an ACK was lost or the RTO
+    # fired early. Not packet loss, so kept out of ``retransmissions``.
+    spurious_retransmissions: int = 0
     zero_window_events: int = 0
     syn_ts: Optional[float] = None
     synack_ts: Optional[float] = None
@@ -263,8 +266,10 @@ class CaptureState:
     talkers: Dict[str, Dict[str, int]] = field(default_factory=dict)
     # DNS IDs can legitimately be reused before an earlier transaction has
     # completed, so each key needs a FIFO rather than a single query.
-    dns_pending: Dict[Tuple[str, str, str], List[DnsQuery]] = field(default_factory=dict)
+    dns_pending: Dict[Tuple[str, str], List[DnsQuery]] = field(default_factory=dict)
     dns_answered: List[DnsExchange] = field(default_factory=list)
+    # (key, name) -> time of the latest answer, to recognise answered retries
+    dns_last_answer: Dict[Tuple[Tuple[str, str], str], float] = field(default_factory=dict)
     dns_errors: List[DnsError] = field(default_factory=list)
     tls_alerts: List[TlsAlert] = field(default_factory=list)
     icmp_frag_events: List[IcmpFragEvent] = field(default_factory=list)
@@ -502,6 +507,18 @@ def _packet_extras(layers: dict, chain: List[str], expert_messages,
     return extras
 
 
+def _drop_answered_retries(state: CaptureState) -> None:
+    """A query repeated with the same id and name, followed by one answer, is a
+    single lookup that the client retried: drop the leftover repeat."""
+    for key in list(state.dns_pending):
+        kept = [q for q in state.dns_pending[key]
+                if state.dns_last_answer.get((key, q.name), -1.0) < q.ts]
+        if kept:
+            state.dns_pending[key] = kept
+        else:
+            del state.dns_pending[key]
+
+
 def build_packet_row(layers: dict, chain: List[str], ts: float, first_ts: float,
                      length: int, src: Optional[str], dst: Optional[str],
                      expert_messages, duplicate: bool) -> PacketRow:
@@ -694,10 +711,11 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
                 conv.mss_server = int(mss)
         if field_bool(layers, "tcp.flags.reset") and conv.rst_ts is None:
             conv.rst_ts = ts
-        if (
+        if field_present(layers, "tcp.analysis.spurious_retransmission"):
+            conv.spurious_retransmissions += 1
+        elif (
             field_present(layers, "tcp.analysis.retransmission")
             or field_present(layers, "tcp.analysis.fast_retransmission")
-            or field_present(layers, "tcp.analysis.spurious_retransmission")
         ):
             conv.retransmissions += 1
             if bucket is not None:
@@ -819,12 +837,25 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     dns_id = fget(layers, "dns.id")
     if dns_id is not None and src and dst and not is_icmp_error:
         name = _sanitize(fget(layers, "dns.qry.name", "") or "")
-        key = (udp_stream or ("tcp-%s" % tcp_stream), dns_id, name)
+        # Matched on (stream, id): a DNS UPDATE response does not repeat the
+        # zone name. Queries sharing the id are told apart by name when the
+        # response carries one, oldest first; a repeat left over once its name
+        # was answered is a retry, not an unanswered query (see
+        # _drop_answered_retries).
+        key = (udp_stream or ("tcp-%s" % tcp_stream), dns_id)
         if field_bool(layers, "dns.flags.response"):
             pending = state.dns_pending.get(key)
-            query = pending.pop(0) if pending else None
-            if pending == []:
-                del state.dns_pending[key]
+            query = None
+            if pending:
+                target = name if name and any(q.name == name for q in pending) else pending[0].name
+                index = next(i for i, q in enumerate(pending) if q.name == target)
+                query = pending.pop(index)
+                if not pending:
+                    del state.dns_pending[key]
+            if not name and query is not None:
+                name = query.name
+            if name and len(state.dns_last_answer) < config.MAX_DNS_TRANSACTIONS:
+                state.dns_last_answer[(key, name)] = ts
             rcode = int(fget(layers, "dns.flags.rcode", "0") or 0)
             if rcode == 0 and name:
                 for addr in _as_list(layers.get("dns_a")) + _as_list(layers.get("dns_aaaa")):
@@ -1073,6 +1104,7 @@ def _build_conversations(state: CaptureState) -> Conversations:
                 start_time_epoch=conv.first_ts, end_time_epoch=conv.last_ts,
                 duration_seconds=round(conv.last_ts - conv.first_ts, 6),
                 retransmissions=conv.retransmissions,
+                spurious_retransmissions=conv.spurious_retransmissions,
                 retransmission_pct=round(pct, 2),
                 zero_window_events=conv.zero_window_events,
                 dup_acks=conv.dup_acks,
@@ -1259,6 +1291,7 @@ def analyze_pcap(
             if state.skipped_packets == 1:
                 _log.warning("Paquete con campos no interpretables; se omite y se sigue.")
 
+    _drop_answered_retries(state)
     quality = build_capture_quality(state)
     issues = apply_quality_caveats(build_issues(state), quality)
     if len(issues) > config.MAX_ISSUES:

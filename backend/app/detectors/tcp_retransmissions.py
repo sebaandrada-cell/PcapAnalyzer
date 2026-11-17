@@ -11,7 +11,8 @@ from ._util import conv_label
 def detect(state) -> List[Issue]:
     issues: List[Issue] = []
     for conv in state.tcp_convs.values():
-        if conv.packets < config.RETRANS_MIN_PACKETS or conv.retransmissions == 0:
+        if conv.packets < config.RETRANS_MIN_PACKETS \
+                or conv.retransmissions < config.RETRANS_MIN_COUNT:
             continue
         pct = 100.0 * conv.retransmissions / conv.packets
         if pct < config.RETRANS_WARN_PCT:

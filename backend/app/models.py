@@ -69,6 +69,7 @@ class TcpConversation(BaseModel):
     duration_seconds: float
     retransmissions: int
     retransmission_pct: float
+    spurious_retransmissions: int = 0  # already-ACKed data resent: not loss
     zero_window_events: int
     mss_client: Optional[int] = None
     mss_server: Optional[int] = None

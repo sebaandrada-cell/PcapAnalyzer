@@ -106,6 +106,9 @@ CORS_ORIGINS = [
 # Issue-detection thresholds (see CLAUDE.md: >2% retransmissions is critical).
 RETRANS_MIN_PACKETS = _int_env("RETRANS_MIN_PACKETS", 5)   # ignore tiny conversations
 RETRANS_WARN_PCT = float(os.environ.get("RETRANS_WARN_PCT", 1.0))
+# A single retransmission is routine (one RTO); a short conversation would turn it
+# into a high percentage, so at least this many are needed to report anything.
+RETRANS_MIN_COUNT = _int_env("RETRANS_MIN_COUNT", 2)
 RETRANS_CRIT_PCT = float(os.environ.get("RETRANS_CRIT_PCT", 2.0))
 SYN_RST_MAX_DELAY_S = float(os.environ.get("SYN_RST_MAX_DELAY_S", 1.0))
 DNS_SLOW_THRESHOLD_S = float(os.environ.get("DNS_SLOW_THRESHOLD_S", 0.5))
