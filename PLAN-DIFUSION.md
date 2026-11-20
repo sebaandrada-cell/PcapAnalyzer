@@ -12,7 +12,7 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
-| Paquete 1.5.0 (gratis, Apache 2.0; 27 detectores con seguridad, túneles y tormenta ARP; app en inglés según el navegador) | ☐ pendiente de subir a Gumroad |
+| Paquete 1.5.0 (gratis, Apache 2.0; 27 detectores con seguridad, túneles y tormenta ARP; app en inglés según el navegador) | ☑ subido a Gumroad el 2026-11-20 a 0 € (sustituye al 1.4.1; sha256 verificado en el archivo que sirve Gumroad) |
 | Paquete 1.4.1 (investigación con IA, 21 detectores, calidad de la captura, filtros reales de Wireshark sobre toda la captura), sin secretos ni datos internos | ☑ subido a Gumroad el 2026-11-17 (sustituye al 1.4.0; sha256 verificado en la descarga real) |
 | Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
 | `docker compose` probado de punta a punta (22 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
