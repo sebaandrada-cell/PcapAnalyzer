@@ -45,7 +45,7 @@ from .tshark import (
     install_instructions,
     tshark_version,
 )
-from .i18n import lang_from_header, reset_lang, set_lang, tr
+from .i18n import current_lang, lang_from_header, reset_lang, set_lang, tr
 
 # Accepted capture magic numbers. Kept as an allowlist on purpose: it is a
 # cheap defense-in-depth gate in front of tshark's dissector attack surface,
@@ -452,12 +452,12 @@ def report(
     _principal: Principal = Depends(require_api_token_no_rate_limit),
 ) -> Response:
     """Build the downloadable PDF report (Fase 4)."""
-    pdf_bytes = build_report(request.analysis, request.diagnosis)
+    pdf_bytes = build_report(request.analysis, request.diagnosis, lang=current_lang())
     safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", request.analysis.file.name)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="informe-%s.pdf"' % safe_name
+            "Content-Disposition": 'attachment; filename="%s-%s.pdf"' % (tr("informe", "report"), safe_name)
         },
     )

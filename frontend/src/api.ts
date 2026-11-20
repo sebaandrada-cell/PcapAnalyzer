@@ -367,7 +367,7 @@ export async function exportReport(
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `informe-${analysis.file.name.replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`
+  link.download = `${getFormatLang() === 'en' ? 'report' : 'informe'}-${analysis.file.name.replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`
   document.body.appendChild(link)
   link.click()
   link.remove()

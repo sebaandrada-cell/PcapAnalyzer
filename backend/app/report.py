@@ -1,6 +1,6 @@
 """PDF report generation (Fase 4).
 
-Builds a client-deliverable Spanish report from an AnalysisResult (plus the
+Builds a client-deliverable report (Spanish or English) from an AnalysisResult (plus the
 optional AI diagnosis) using reportlab — no system dependencies.
 """
 from __future__ import annotations
@@ -26,7 +26,10 @@ from reportlab.platypus import (
 from . import __version__
 from .models import AnalysisResult
 
-_SEVERITY_LABEL = {"critical": "CRÍTICO", "warning": "AVISO", "info": "INFO"}
+_SEVERITY_LABEL = {
+    "es": {"critical": "CRÍTICO", "warning": "AVISO", "info": "INFO"},
+    "en": {"critical": "CRITICAL", "warning": "WARNING", "info": "INFO"},
+}
 _SEVERITY_COLOR = {
     "critical": colors.HexColor("#d03b3b"),
     "warning": colors.HexColor("#8a5b00"),
@@ -104,12 +107,13 @@ _PKT_RE = re.compile(r"\[\[pkt:\s*(\d+)(?:\s*[-–]\s*(\d+))?\s*\]\]")
 _FILTER_RE = re.compile(r"\[\[filter:\s*([^\]]+?)\s*\]\]")
 
 
-def _inline_markup(raw: str) -> str:
+def _inline_markup(raw: str, lang: str = "es") -> str:
     """Escape the model's text, then turn its light markup into Paragraph tags."""
     # Evidence marks are replaced on the ESCAPED text so a filter cannot inject tags.
     text = _esc(raw)
     text = _PKT_RE.sub(
-        lambda m: ("paquetes %s–%s" % (m.group(1), m.group(2))) if m.group(2) else "paquete %s" % m.group(1),
+        lambda m: ((_PKT_WORDS[lang][1] + " %s–%s") % (m.group(1), m.group(2))) if m.group(2)
+        else (_PKT_WORDS[lang][0] + " %s") % m.group(1),
         text,
     )
     # Filters and `code` are kept verbatim: stash them so the bold pass cannot
@@ -127,7 +131,10 @@ def _inline_markup(raw: str) -> str:
     return re.sub(r"\x00(\d+)\x00", lambda m: spans[int(m.group(1))], text)
 
 
-def _investigation_flowables(text: str, styles) -> List[object]:
+_PKT_WORDS = {"es": ("paquete", "paquetes"), "en": ("packet", "packets")}
+
+
+def _investigation_flowables(text: str, styles, lang: str = "es") -> List[object]:
     """The agent's report: headings, bullets, paragraphs, notes and evidence marks."""
     flow: List[object] = []
     paragraph: List[str] = []
@@ -136,7 +143,7 @@ def _investigation_flowables(text: str, styles) -> List[object]:
         if paragraph:
             joined = " ".join(paragraph)
             note = re.match(r"^_\((.*)\)_$", joined) or re.match(r"^_(.*)_$", joined)
-            body = "<i>%s</i>" % _inline_markup(note.group(1)) if note else _inline_markup(joined)
+            body = "<i>%s</i>" % _inline_markup(note.group(1), lang) if note else _inline_markup(joined, lang)
             flow.append(Paragraph(body, styles["body"]))
             flow.append(Spacer(1, 2 * mm))
             paragraph.clear()
@@ -148,10 +155,10 @@ def _investigation_flowables(text: str, styles) -> List[object]:
         if heading:
             flush()
             style = styles["h3"] if len(heading.group(1)) > 2 else styles["h2"]
-            flow.append(Paragraph(_inline_markup(heading.group(2)), style))
+            flow.append(Paragraph(_inline_markup(heading.group(2), lang), style))
         elif bullet:
             flush()
-            flow.append(Paragraph("• " + _inline_markup(bullet.group(1)), styles["body"]))
+            flow.append(Paragraph("• " + _inline_markup(bullet.group(1), lang), styles["body"]))
         elif line == "":
             flush()
         elif line.startswith("```"):
@@ -179,30 +186,39 @@ def _diagnosis_paragraphs(diagnosis: str, styles) -> List[Paragraph]:
     return flow
 
 
-def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> bytes:
+def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None,
+                 lang: str = "es") -> bytes:
+    lang = "en" if lang == "en" else "es"
+    en = lang == "en"
+
+    def T(es_text: str, en_text: str) -> str:
+        return en_text if en else es_text
+
+    labels = _SEVERITY_LABEL[lang]
     styles = _styles()
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title="Informe de análisis — %s" % analysis.file.name,
+        title=T("Informe de análisis — %s", "Analysis report — %s") % analysis.file.name,
     )
     flow: list = []
     summary = analysis.summary
 
-    flow.append(Paragraph("Informe de análisis de captura", styles["title"]))
+    flow.append(Paragraph(T("Informe de análisis de captura", "Capture analysis report"), styles["title"]))
     flow.append(Paragraph(
-        "%s · %s · generado el %s · PcapAnalyzer %s"
+        T("%s · %s · generado el %s · PcapAnalyzer %s", "%s · %s · generated on %s · PcapAnalyzer %s")
         % (_esc(analysis.file.name), _fmt_bytes(analysis.file.size_bytes),
-           datetime.now().strftime("%d/%m/%Y %H:%M"), __version__),
+           datetime.now().strftime(T("%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M")), __version__),
         styles["meta"],
     ))
 
-    flow.append(Paragraph("Resumen", styles["h2"]))
+    flow.append(Paragraph(T("Resumen", "Summary"), styles["h2"]))
     flow.append(_table([
-        ["Paquetes", "Duración", "Bytes", "Conversaciones", "Problemas"],
-        ["{:,}".format(summary.packets).replace(",", "."),
+        [T("Paquetes", "Packets"), T("Duración", "Duration"), "Bytes",
+         T("Conversaciones", "Conversations"), T("Problemas", "Problems")],
+        ["{:,}".format(summary.packets).replace(",", "," if en else "."),
          _fmt_duration(summary.duration_seconds),
          _fmt_bytes(summary.bytes),
          str(summary.conversations),
@@ -210,40 +226,41 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
     ], col_widths=[34 * mm, 34 * mm, 34 * mm, 34 * mm, 34 * mm]))
 
     if analysis.capture_quality.notes:
-        flow.append(Paragraph("Calidad de la captura", styles["h2"]))
+        flow.append(Paragraph(T("Calidad de la captura", "Capture quality"), styles["h2"]))
         for note in analysis.capture_quality.notes:
             flow.append(Paragraph(
-                "<b>[%s]</b> %s" % ("AVISO" if note.severity == "warning" else "INFO",
-                                    _esc(note.title)),
+                "<b>[%s]</b> %s" % (labels.get(note.severity, "INFO"),
+                                    _esc(note.title_en if en else note.title)),
                 ParagraphStyle("quality", parent=styles["body"],
                                textColor=_SEVERITY_COLOR.get(note.severity, _INK)),
             ))
-            flow.append(Paragraph(_esc(note.detail), styles["detail"]))
+            flow.append(Paragraph(_esc(note.detail_en if en else note.detail), styles["detail"]))
 
     if analysis.issues:
-        flow.append(Paragraph("Problemas detectados", styles["h2"]))
+        flow.append(Paragraph(T("Problemas detectados", "Detected problems"), styles["h2"]))
         for issue in analysis.issues:
             severity = ParagraphStyle(
                 "sev", parent=styles["body"],
                 textColor=_SEVERITY_COLOR.get(issue.severity, _INK),
             )
             flow.append(Paragraph(
-                "<b>[%s]</b> %s" % (_SEVERITY_LABEL.get(issue.severity, "?"),
-                                    _esc(issue.title)),
+                "<b>[%s]</b> %s" % (labels.get(issue.severity, "?"),
+                                    _esc((issue.title_en or issue.title) if en else issue.title)),
                 severity,
             ))
-            flow.append(Paragraph(_esc(issue.detail), styles["detail"]))
+            flow.append(Paragraph(
+                _esc((issue.detail_en or issue.detail) if en else issue.detail), styles["detail"]))
 
     if diagnosis and re.search(r"(?m)^#{1,6}\s", diagnosis):
-        flow.append(Paragraph("Investigación asistida por IA", styles["h2"]))
-        flow.extend(_investigation_flowables(diagnosis, styles))
+        flow.append(Paragraph(T("Investigación asistida por IA", "AI-assisted investigation"), styles["h2"]))
+        flow.extend(_investigation_flowables(diagnosis, styles, lang))
     elif diagnosis:
-        flow.append(Paragraph("Diagnóstico asistido (IA)", styles["h2"]))
+        flow.append(Paragraph(T("Diagnóstico asistido (IA)", "AI-assisted diagnosis"), styles["h2"]))
         flow.extend(_diagnosis_paragraphs(diagnosis, styles))
 
-    flow.append(Paragraph("Distribución de protocolos", styles["h2"]))
+    flow.append(Paragraph(T("Distribución de protocolos", "Protocol distribution"), styles["h2"]))
     flow.append(_table(
-        [["Protocolo", "Paquetes", "% paquetes", "Bytes"]]
+        [[T("Protocolo", "Protocol"), T("Paquetes", "Packets"), T("% paquetes", "% packets"), "Bytes"]]
         + [
             [proto.protocol.upper(), str(proto.packets),
              "%.1f%%" % proto.packet_pct, _fmt_bytes(proto.bytes)]
@@ -254,7 +271,7 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
 
     flow.append(Paragraph("Top talkers", styles["h2"]))
     flow.append(_table(
-        [["Host", "Paquetes", "Enviado", "Recibido", "Total"]]
+        [["Host", T("Paquetes", "Packets"), T("Enviado", "Sent"), T("Recibido", "Received"), "Total"]]
         + [
             [_esc(talker.address), str(talker.packets),
              _fmt_bytes(talker.bytes_sent), _fmt_bytes(talker.bytes_received),
@@ -265,8 +282,9 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
     ))
 
     if analysis.conversations.tcp:
-        flow.append(Paragraph("Conversaciones TCP principales", styles["h2"]))
-        rows = [["Origen", "Destino", "Paquetes", "Bytes", "Retrans.", "ACK dup.", "RTT med."]]
+        flow.append(Paragraph(T("Conversaciones TCP principales", "Top TCP conversations"), styles["h2"]))
+        rows = [[T("Origen", "Source"), T("Destino", "Destination"), T("Paquetes", "Packets"), "Bytes",
+                 "Retrans.", T("ACK dup.", "Dup ACK"), T("RTT med.", "Avg RTT")]]
         for conv in analysis.conversations.tcp[:MAX_REPORT_CONVERSATIONS]:
             rows.append([
                 Paragraph(_esc("%s:%d" % (conv.src, conv.src_port)), styles["cell"]),
@@ -281,9 +299,10 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
 
     expert = [e for e in analysis.expert_info if e.severity in ("error", "warning")]
     if expert:
-        flow.append(Paragraph("Información experta de Wireshark (errores y avisos)", styles["h2"]))
+        flow.append(Paragraph(T("Información experta de Wireshark (errores y avisos)",
+                                "Wireshark expert info (errors and warnings)"), styles["h2"]))
         flow.append(_table(
-            [["Severidad", "Grupo", "Mensaje", "Veces"]]
+            [[T("Severidad", "Severity"), T("Grupo", "Group"), T("Mensaje", "Message"), T("Veces", "Count")]]
             + [
                 [e.severity.upper(), _esc(e.group),
                  Paragraph(_esc(e.summary), styles["cell"]), str(e.count)]
@@ -293,9 +312,9 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
         ))
 
     if analysis.tunnels:
-        flow.append(Paragraph("Túneles VPN detectados", styles["h2"]))
+        flow.append(Paragraph(T("Túneles VPN detectados", "Detected VPN tunnels"), styles["h2"]))
         flow.append(_table(
-            [["Tipo", "Peer A", "Peer B", "Paquetes", "Bytes"]]
+            [[T("Tipo", "Type"), "Peer A", "Peer B", T("Paquetes", "Packets"), "Bytes"]]
             + [
                 [tunnel.type.upper(), _esc(tunnel.peer_a), _esc(tunnel.peer_b),
                  str(tunnel.packets), _fmt_bytes(tunnel.bytes)]
@@ -305,9 +324,9 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
         ))
 
     if analysis.service_response_times:
-        flow.append(Paragraph("Tiempos de respuesta (SRT)", styles["h2"]))
+        flow.append(Paragraph(T("Tiempos de respuesta (SRT)", "Service response times (SRT)"), styles["h2"]))
         flow.append(_table(
-            [["Protocolo", "Muestras", "Mín", "Media", "Máx"]]
+            [[T("Protocolo", "Protocol"), T("Muestras", "Samples"), T("Mín", "Min"), T("Media", "Avg"), T("Máx", "Max")]]
             + [
                 [srt.protocol, str(srt.samples), "%.1f ms" % srt.min_ms,
                  "%.1f ms" % srt.avg_ms, "%.1f ms" % srt.max_ms]
@@ -317,9 +336,9 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
         ))
 
     if analysis.tls_sessions:
-        flow.append(Paragraph("Sesiones TLS", styles["h2"]))
+        flow.append(Paragraph(T("Sesiones TLS", "TLS sessions"), styles["h2"]))
         flow.append(_table(
-            [["Cliente", "Servidor", "Versión", "Cipher", "Alerta"]]
+            [[T("Cliente", "Client"), T("Servidor", "Server"), T("Versión", "Version"), "Cipher", T("Alerta", "Alert")]]
             + [
                 [_esc(tls.client), _esc(tls.server), tls.version or "—",
                  _esc(tls.cipher or "—"), _esc(tls.alert or "—")]
@@ -329,8 +348,10 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None) -> b
         ))
 
     flow.append(Paragraph(
-        "Informe generado por PcapAnalyzer · la captura se analiza en tu máquina y se "
-        "conserva cifrada solo mientras dura la sesión de investigación; después se borra.",
+        T("Informe generado por PcapAnalyzer · la captura se analiza en tu máquina y se "
+          "conserva cifrada solo mientras dura la sesión de investigación; después se borra.",
+          "Report generated by PcapAnalyzer · the capture is analysed on your machine and "
+          "kept encrypted only while the investigation session lasts; then it is deleted."),
         styles["footer"],
     ))
 
