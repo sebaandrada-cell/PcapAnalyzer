@@ -6,6 +6,7 @@ a TTL. The uploaded file is deleted as soon as its analysis finishes.
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import threading
@@ -18,6 +19,7 @@ from typing import Dict, Optional
 from . import config
 from .analysis import analyze_pcap
 from .models import AnalysisResult
+from .i18n import tr
 
 
 @dataclass
@@ -76,21 +78,23 @@ class JobStore:
             queued = sum(existing.status == "queued" for existing in outstanding)
             if owner_outstanding >= self._max_per_token:
                 raise JobCapacityError(
-                    "Este token ya alcanzó el máximo de análisis simultáneos."
+                    tr("Este token ya alcanzó el máximo de análisis simultáneos.", "This token already reached its maximum of concurrent analyses.")
                 )
             if queued >= self._max_queued:
                 raise JobCapacityError(
-                    "La cola de análisis está llena; inténtalo de nuevo más tarde."
+                    tr("La cola de análisis está llena; inténtalo de nuevo más tarde.", "The analysis queue is full; try again later.")
                 )
             pending_bytes = sum(existing.size_bytes for existing in outstanding)
             if pending_bytes + size_bytes > self._max_pending_bytes:
                 raise JobCapacityError(
-                    "La capacidad reservada para capturas en espera está llena."
+                    tr("La capacidad reservada para capturas en espera está llena.", "The space reserved for waiting captures is full.")
                 )
             self._jobs[job.id] = job
             try:
-                self._executor.submit(self._run, job, tshark_path, pcap_path,
-                                      filename, size_bytes)
+                # Run in a copy of the request context so job errors use the
+                # language the upload asked for.
+                self._executor.submit(contextvars.copy_context().run, self._run, job,
+                                      tshark_path, pcap_path, filename, size_bytes)
             except Exception:
                 del self._jobs[job.id]
                 raise

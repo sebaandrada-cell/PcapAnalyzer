@@ -18,6 +18,7 @@ import time
 from typing import Iterator, List, Optional
 
 from . import config
+from .i18n import tr
 
 _TSHARK_CANDIDATES = [
     "/opt/homebrew/bin/tshark",
@@ -160,21 +161,30 @@ def find_tshark() -> Optional[str]:
 
 def install_instructions() -> str:
     if sys.platform == "darwin":
-        return (
+        return tr(
             "tshark no está instalado. En macOS: 'brew install wireshark' "
             "(solo CLI) o 'brew install --cask wireshark' (app completa). "
-            "También puedes definir TSHARK_PATH apuntando al binario."
+            "También puedes definir TSHARK_PATH apuntando al binario.",
+            "tshark is not installed. On macOS: 'brew install wireshark' "
+            "(CLI only) or 'brew install --cask wireshark' (full app). "
+            "You can also set TSHARK_PATH to the binary.",
         )
     if sys.platform.startswith("linux"):
-        return (
+        return tr(
             "tshark no está instalado. Debian/Ubuntu: 'sudo apt install tshark'. "
             "Fedora: 'sudo dnf install wireshark-cli'. "
-            "También puedes definir TSHARK_PATH apuntando al binario."
+            "También puedes definir TSHARK_PATH apuntando al binario.",
+            "tshark is not installed. Debian/Ubuntu: 'sudo apt install tshark'. "
+            "Fedora: 'sudo dnf install wireshark-cli'. "
+            "You can also set TSHARK_PATH to the binary.",
         )
-    return (
+    return tr(
         "tshark no está instalado. Descarga Wireshark desde "
         "https://www.wireshark.org/download.html (incluye tshark) o define "
-        "TSHARK_PATH apuntando al binario."
+        "TSHARK_PATH apuntando al binario.",
+        "tshark is not installed. Download Wireshark from "
+        "https://www.wireshark.org/download.html (includes tshark) or set "
+        "TSHARK_PATH to the binary.",
     )
 
 
@@ -248,7 +258,7 @@ def iter_packets(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TsharkTimeoutError(
-                    "tshark excedió el tiempo máximo de análisis (%ds)" % timeout_s
+                    tr("tshark excedió el tiempo máximo de análisis (%ds)", "tshark exceeded the maximum analysis time (%ds)") % timeout_s
                 )
             for key, _ in selector.select(timeout=min(remaining, 0.25)):
                 chunk = os.read(key.fileobj.fileno(), 65536)
@@ -264,13 +274,13 @@ def iter_packets(
                 stdout_buffer += chunk
                 if len(stdout_buffer) > MAX_EK_LINE_BYTES and b"\n" not in stdout_buffer:
                     raise TsharkError(
-                        "tshark devolvió una línea JSON superior al límite de 1 MiB."
+                        tr("tshark devolvió una línea JSON superior al límite de 1 MiB.", "tshark returned a JSON line over the 1 MiB limit.")
                     )
                 while b"\n" in stdout_buffer:
                     raw_line, stdout_buffer = stdout_buffer.split(b"\n", 1)
                     if len(raw_line) > MAX_EK_LINE_BYTES:
                         raise TsharkError(
-                            "tshark devolvió una línea JSON superior al límite de 1 MiB."
+                            tr("tshark devolvió una línea JSON superior al límite de 1 MiB.", "tshark returned a JSON line over the 1 MiB limit.")
                         )
                     line = raw_line.decode("utf-8", errors="replace")
                     if '"layers"' not in line:
@@ -285,7 +295,7 @@ def iter_packets(
         returncode = proc.wait(timeout=max(0.1, deadline - time.monotonic()))
         if returncode != 0:
             raise TsharkError(
-                "tshark terminó con código %d: %s" % (
+                tr("tshark terminó con código %d: %s", "tshark exited with code %d: %s") % (
                     returncode,
                     b"".join(stderr_parts).decode("utf-8", errors="replace").strip()[:500],
                 )

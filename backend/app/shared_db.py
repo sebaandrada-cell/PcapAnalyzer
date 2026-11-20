@@ -12,6 +12,7 @@ from psycopg_pool import ConnectionPool, PoolTimeout
 from psycopg import Connection
 
 from . import config
+from .i18n import tr
 
 _pool: Optional[ConnectionPool] = None
 _pool_lock = threading.Lock()
@@ -22,7 +23,7 @@ def _get_pool() -> ConnectionPool:
     if not config.SUPABASE_DB_URL:
         raise HTTPException(
             status_code=503,
-            detail="Falta SUPABASE_DB_URL para usar el modo multi-tenant.",
+            detail=tr("Falta SUPABASE_DB_URL para usar el modo multi-tenant.", "SUPABASE_DB_URL is missing for multi-tenant mode."),
         )
     with _pool_lock:
         if _pool is None:
@@ -43,7 +44,7 @@ def _get_pool() -> ConnectionPool:
                 _pool = None
                 raise HTTPException(
                     status_code=503,
-                    detail="No se pudo conectar a la base de datos compartida.",
+                    detail=tr("No se pudo conectar a la base de datos compartida.", "Could not connect to the shared database."),
                 ) from exc
         return _pool
 
@@ -56,7 +57,7 @@ def connection() -> Iterator[Connection]:
     except (psycopg.Error, PoolTimeout, TimeoutError) as exc:
         raise HTTPException(
             status_code=503,
-            detail="El servicio de datos compartido no está disponible.",
+            detail=tr("El servicio de datos compartido no está disponible.", "The shared data service is unavailable."),
         ) from exc
 
 
@@ -77,13 +78,13 @@ def resolve_tenant_id(user_id: str) -> str:
         if exc.status_code == 503:
             raise HTTPException(
                 status_code=503,
-                detail="No se pudo consultar el espacio de trabajo.",
+                detail=tr("No se pudo consultar el espacio de trabajo.", "Could not read the workspace."),
             ) from exc
         raise
     if row is None:
         raise HTTPException(
             status_code=403,
-            detail="La cuenta no tiene un espacio de trabajo activo.",
+            detail=tr("La cuenta no tiene un espacio de trabajo activo.", "The account has no active workspace."),
         )
     return str(row["tenant_id"])
 
@@ -123,13 +124,13 @@ def consume_request_quota(tenant_id: str) -> None:
         if exc.status_code == 503:
             raise HTTPException(
                 status_code=503,
-                detail="No se pudo verificar la cuota compartida.",
+                detail=tr("No se pudo verificar la cuota compartida.", "Could not check the shared quota."),
             ) from exc
         raise
     if row["request_count"] >= config.API_MAX_REQUESTS_PER_MINUTE:
         raise HTTPException(
             status_code=429,
-            detail="El espacio de trabajo alcanzó su límite de solicitudes por minuto.",
+            detail=tr("El espacio de trabajo alcanzó su límite de solicitudes por minuto.", "The workspace reached its requests-per-minute limit."),
             headers={"Retry-After": str(row["retry_after"])},
         )
 
