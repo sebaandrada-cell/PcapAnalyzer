@@ -18,6 +18,7 @@ from jwt import PyJWKClient
 
 from . import config
 from . import shared_db
+from .i18n import tr
 
 _bearer = HTTPBearer(auto_error=False)
 _WINDOW_SECONDS = 60.0
@@ -37,7 +38,7 @@ class RequestQuota:
             if len(requests) >= config.API_MAX_REQUESTS_PER_MINUTE:
                 raise HTTPException(
                     status_code=429,
-                    detail="Se alcanzó el límite de solicitudes por minuto para este token.",
+                    detail=tr("Se alcanzó el límite de solicitudes por minuto para este token.", "This token reached its requests-per-minute limit."),
                     headers={"Retry-After": str(max(1, int(_WINDOW_SECONDS - (now - requests[0]))))},
                 )
             requests.append(now)
@@ -59,7 +60,7 @@ class Principal:
 def _unauthorized() -> HTTPException:
     return HTTPException(
         status_code=401,
-        detail="Token no válido o expirado.",
+        detail=tr("Token no válido o expirado.", "Invalid or expired token."),
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -118,12 +119,12 @@ def _authenticate(
     if not config.API_TOKENS:
         raise HTTPException(
             status_code=503,
-            detail="La API requiere configuración: define API_TOKENS en el backend.",
+            detail=tr("La API requiere configuración: define API_TOKENS en el backend.", "The API needs configuration: set API_TOKENS on the backend."),
         )
     if credentials is None:
         raise HTTPException(
             status_code=401,
-            detail="Se requiere un token Bearer para usar esta API.",
+            detail=tr("Se requiere un token Bearer para usar esta API.", "A Bearer token is required to use this API."),
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -134,7 +135,7 @@ def _validate_token(candidate: str, *, charge: bool = False) -> Principal:
     if not config.API_TOKENS:
         raise HTTPException(
             status_code=503,
-            detail="La API requiere configuración: define API_TOKENS en el backend.",
+            detail=tr("La API requiere configuración: define API_TOKENS en el backend.", "The API needs configuration: set API_TOKENS on the backend."),
         )
     candidate_bytes = candidate.encode("utf-8")
     valid = False
@@ -145,7 +146,7 @@ def _validate_token(candidate: str, *, charge: bool = False) -> Principal:
     if not valid:
         raise HTTPException(
             status_code=401,
-            detail="Token Bearer inválido.",
+            detail=tr("Token Bearer inválido.", "Invalid Bearer token."),
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -164,7 +165,7 @@ def _validate_supabase_token(candidate: str) -> Principal:
     if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
         raise HTTPException(
             status_code=503,
-            detail="Configura SUPABASE_URL y SUPABASE_ANON_KEY para la autenticación.",
+            detail=tr("Configura SUPABASE_URL y SUPABASE_ANON_KEY para la autenticación.", "Set SUPABASE_URL and SUPABASE_ANON_KEY for authentication."),
         )
 
     issuer = "%s/auth/v1" % config.SUPABASE_URL
@@ -200,7 +201,7 @@ def _validate_supabase_token(candidate: str) -> Principal:
     except PyJWKClientConnectionError as exc:
         raise HTTPException(
             status_code=503,
-            detail="No se pudieron verificar las claves de autenticación de Supabase.",
+            detail=tr("No se pudieron verificar las claves de autenticación de Supabase.", "Could not verify the Supabase authentication keys."),
         ) from exc
     except (PyJWTError, PyJWKClientError, URLError, TimeoutError) as exc:
         raise _unauthorized() from exc
@@ -229,7 +230,7 @@ class AnalysisConcurrency:
             if self._active[principal] >= config.API_MAX_JOBS_PER_TOKEN:
                 raise HTTPException(
                     status_code=429,
-                    detail="Este token ya alcanzó el máximo de análisis simultáneos.",
+                    detail=tr("Este token ya alcanzó el máximo de análisis simultáneos.", "This token already reached its maximum of concurrent analyses."),
                 )
             self._active[principal] += 1
 

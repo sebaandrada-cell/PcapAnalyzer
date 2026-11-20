@@ -7,6 +7,14 @@ export type Lang = 'es' | 'en'
 type Dict = { [key: string]: string | Dict }
 
 const es: Dict = {
+  api: {
+    analysisFailed: 'El análisis falló.',
+    analysisTimeout: 'El análisis tardó demasiado; consulta el estado de la captura o inténtalo de nuevo.',
+    reportFailed: 'No se pudo generar el informe ({status}).',
+    sessionDeleteFailed: 'No se pudo borrar la sesión ({status}).',
+    emptyResponse: 'Respuesta sin cuerpo.',
+    httpError: 'Error {status}',
+  },
   settings: {
     title: 'Configuración',
     theme: 'Tema',
@@ -483,6 +491,14 @@ const es: Dict = {
 }
 
 const en: Dict = {
+  api: {
+    analysisFailed: 'The analysis failed.',
+    analysisTimeout: 'The analysis took too long; check the capture status or try again.',
+    reportFailed: 'Could not build the report ({status}).',
+    sessionDeleteFailed: 'Could not delete the session ({status}).',
+    emptyResponse: 'Empty response.',
+    httpError: 'HTTP error {status}',
+  },
   settings: {
     title: 'Settings',
     theme: 'Theme',
@@ -977,4 +993,12 @@ export function translate(lang: Lang, key: string, params?: Record<string, strin
     }
   }
   return text
+}
+
+// Saved choice first; otherwise Spanish for Spanish browsers and English for
+// everyone else (the product is sold beyond Spain).
+export function pickInitialLang(stored: string | null, browserLanguages: readonly string[]): Lang {
+  if (stored === 'es' || stored === 'en') return stored
+  const first = (browserLanguages[0] ?? '').toLowerCase()
+  return first.startsWith('es') ? 'es' : 'en'
 }

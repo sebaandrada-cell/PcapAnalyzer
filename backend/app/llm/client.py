@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import config
+from ..i18n import tr
 
 _client = None
 _client_error: Optional[str] = None
@@ -48,10 +49,13 @@ def availability() -> dict:
     return {
         "available": client is not None,
         "model": config.LLM_MODEL if client is not None else None,
-        "hint": None if client is not None else (
+        "hint": None if client is not None else tr(
             "La capa IA no está configurada: define ANTHROPIC_API_KEY en el "
             "entorno del backend (o inicia sesión con 'ant auth login') y "
-            "reinicia el servidor."
+            "reinicia el servidor.",
+            "The AI layer is not configured: set ANTHROPIC_API_KEY in the "
+            "backend environment (or sign in with 'ant auth login') and "
+            "restart the server.",
         ),
     }
 

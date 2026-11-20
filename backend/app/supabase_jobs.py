@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 from . import config, shared_db
 from .jobs import JobCapacityError
 from .models import AnalysisResult
+from .i18n import tr
 
 logger = logging.getLogger("uvicorn.error")
 _UPLOAD_RESERVATION_SECONDS = 15 * 60
@@ -90,12 +91,12 @@ class SupabaseJobStore:
         except (OSError, httpx.HTTPError) as exc:
             raise HTTPException(
                 status_code=503,
-                detail="No se pudo almacenar la captura en Supabase Storage.",
+                detail=tr("No se pudo almacenar la captura en Supabase Storage.", "Could not store the capture in Supabase Storage."),
             ) from exc
         if response.status_code not in (200, 201):
             raise HTTPException(
                 status_code=502,
-                detail="Supabase Storage rechazó la captura.",
+                detail=tr("Supabase Storage rechazó la captura.", "Supabase Storage rejected the capture."),
             )
 
     def delete_capture(self, storage_key: str) -> bool:
@@ -241,7 +242,7 @@ class SupabaseJobStore:
             if queued_job is None:
                 raise HTTPException(
                     status_code=503,
-                    detail="La reserva del análisis expiró antes de completar la carga.",
+                    detail=tr("La reserva del análisis expiró antes de completar la carga.", "The analysis reservation expired before the upload finished."),
                 )
         except Exception:
             try:
@@ -299,7 +300,7 @@ class SupabaseJobStore:
         except psycopg.Error as exc:
             raise HTTPException(
                 status_code=503,
-                detail="No se pudo consultar el estado del trabajo.",
+                detail=tr("No se pudo consultar el estado del trabajo.", "Could not read the job status."),
             ) from exc
         if row is None:
             return None

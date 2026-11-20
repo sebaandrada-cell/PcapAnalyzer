@@ -30,6 +30,7 @@ from .demo import DEMO_CHAT_REPLY, demo_investigation
 from .prompts import INVESTIGATE_SENTINEL
 from .runner import AgentLimitError, SessionGoneError, TurnCancelled, TurnEvent, run_turn
 from .tshark_run import ToolError, ToolTimeout, validate_filter
+from ..i18n import reset_lang, set_lang, tr
 
 logger = logging.getLogger("pcapanalyzer.agent")
 router = APIRouter()
@@ -60,7 +61,7 @@ class SessionStatus(BaseModel):
 
 def _not_found() -> HTTPException:
     # 404 for foreign sessions too: do not reveal that the id exists.
-    return HTTPException(status_code=404, detail="Sesión no encontrada o caducada.")
+    return HTTPException(status_code=404, detail=tr("Sesión no encontrada o caducada.", "Session not found or expired."))
 
 
 def _status(session: Session) -> SessionStatus:
@@ -142,13 +143,13 @@ def session_packets(
         raise _not_found()
     display_filter = query.filter.strip()
     if any(ch in display_filter for ch in "\n\r\x00"):
-        raise HTTPException(status_code=422, detail="Filtro no válido: no se admiten saltos de línea.")
+        raise HTTPException(status_code=422, detail=tr("Filtro no válido: no se admiten saltos de línea.", "Invalid filter: line breaks are not allowed."))
     tshark = find_tshark()
     if tshark is None:
         raise HTTPException(status_code=503, detail=install_instructions())
     busy = HTTPException(
         status_code=429,
-        detail="Hay otras búsquedas en curso. Inténtalo de nuevo en unos segundos.",
+        detail=tr("Hay otras búsquedas en curso. Inténtalo de nuevo en unos segundos.", "Other searches are running. Try again in a few seconds."),
         headers={"Retry-After": "3"},
     )
     with _tenants_lock:
@@ -168,13 +169,13 @@ def session_packets(
     except (ToolTimeout, TsharkTimeoutError):
         raise HTTPException(
             status_code=504,
-            detail="La búsqueda tardó demasiado. Acota el filtro (por ejemplo, a una conversación).",
+            detail=tr("La búsqueda tardó demasiado. Acota el filtro (por ejemplo, a una conversación).", "The search took too long. Narrow the filter (for example, to one conversation)."),
         )
     except ToolError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except TsharkError:
         logger.warning("tshark falló en una consulta de paquetes.", exc_info=True)
-        raise HTTPException(status_code=502, detail="tshark no pudo leer la captura.")
+        raise HTTPException(status_code=502, detail=tr("tshark no pudo leer la captura.", "tshark could not read the capture."))
     except OSError:
         raise _not_found()  # the session expired while the query was running
     finally:
@@ -203,8 +204,14 @@ def _sse(event: str, data: dict) -> str:
     return "event: %s\ndata: %s\n\n" % (event, json.dumps(data, ensure_ascii=False))
 
 
-_GENERIC_ERROR = "La investigación falló; inténtalo de nuevo."
-_SESSION_GONE = "La captura ya no está disponible; vuelve a analizarla."
+def _generic_error() -> str:
+    return tr("La investigación falló; inténtalo de nuevo.",
+              "The investigation failed; try again.")
+
+
+def _session_gone() -> str:
+    return tr("La captura ya no está disponible; vuelve a analizarla.",
+              "The capture is no longer available; analyse it again.")
 
 
 def _demo_stream(session: Session, request: ChatRequest) -> Iterator[str]:
@@ -256,28 +263,30 @@ class _TurnStream:
 def _start_turn(session: Session, request: ChatRequest, tshark_path: str) -> _TurnStream:
     """Acquire the session lock and a worker slot, hand them to the worker thread."""
     if not session.lock.acquire(blocking=False):
-        raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
+        raise HTTPException(status_code=409, detail=tr("Hay una investigación en curso en esta sesión.", "An investigation is already running in this session."))
     if not _workers.acquire(blocking=False):
         session.lock.release()
-        raise HTTPException(status_code=429, detail="Hay demasiadas investigaciones en curso; inténtalo en un momento.")
+        raise HTTPException(status_code=429, detail=tr("Hay demasiadas investigaciones en curso; inténtalo en un momento.", "Too many investigations are running; try again in a moment."))
     stream = _TurnStream()
     events, finished, cancel = stream.events, stream.finished, stream.cancel
 
     def worker() -> None:
+        lang_token = set_lang(request.lang)
         try:
             run_turn(session, request.message, request.lang, tshark_path, events.put, cancel=cancel)
         except TurnCancelled:
             pass
         except SessionGoneError:
-            events.put(TurnEvent("error", {"code": "session_expired", "message": _SESSION_GONE}))
+            events.put(TurnEvent("error", {"code": "session_expired", "message": _session_gone()}))
         except AgentLimitError as exc:
             events.put(TurnEvent("error", {"code": "session_tokens", "message": str(exc)}))
         except (AIServiceError, AIUnavailableError) as exc:
             events.put(TurnEvent("error", {"code": "model", "message": str(exc)}))
         except Exception:
             logger.exception("Investigation turn failed")
-            events.put(TurnEvent("error", {"code": "internal", "message": _GENERIC_ERROR}))
+            events.put(TurnEvent("error", {"code": "internal", "message": _generic_error()}))
         finally:
+            reset_lang(lang_token)
             _workers.release()
             session.lock.release()
             events.put(finished)
@@ -296,12 +305,12 @@ def session_chat(
     if session is None:
         raise _not_found()
     if request.message == INVESTIGATE_SENTINEL and session.messages:
-        raise HTTPException(status_code=409, detail="La investigación inicial ya se hizo en esta sesión.")
+        raise HTTPException(status_code=409, detail=tr("La investigación inicial ya se hizo en esta sesión.", "The initial investigation was already done in this session."))
     if session.lock.locked():
-        raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
+        raise HTTPException(status_code=409, detail=tr("Hay una investigación en curso en esta sesión.", "An investigation is already running in this session."))
     if config.LLM_DEMO:
         if not session.lock.acquire(blocking=False):
-            raise HTTPException(status_code=409, detail="Hay una investigación en curso en esta sesión.")
+            raise HTTPException(status_code=409, detail=tr("Hay una investigación en curso en esta sesión.", "An investigation is already running in this session."))
         return StreamingResponse(_demo_stream(session, request), media_type="text/event-stream", headers=_SSE_HEADERS)
     if not ai_available():
         raise HTTPException(status_code=503, detail=availability()["hint"])

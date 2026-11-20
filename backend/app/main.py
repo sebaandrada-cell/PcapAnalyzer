@@ -45,6 +45,7 @@ from .tshark import (
     install_instructions,
     tshark_version,
 )
+from .i18n import current_lang, lang_from_header, reset_lang, set_lang, tr
 
 # Accepted capture magic numbers. Kept as an allowlist on purpose: it is a
 # cheap defense-in-depth gate in front of tshark's dissector attack surface,
@@ -140,6 +141,20 @@ async def authenticate_api_requests(
     return await call_next(request)
 
 
+# Registered after the auth middleware so it wraps it: errors raised there are
+# already in the language the web app asked for.
+@app.middleware("http")
+async def set_request_language(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    token = set_lang(lang_from_header(request.headers.get("accept-language")))
+    try:
+        return await call_next(request)
+    finally:
+        reset_lang(token)
+
+
 @app.middleware("http")
 async def throttle_and_cap_body(
     request: Request,
@@ -194,7 +209,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "Accept-Language"],
 )
 
 
@@ -259,9 +274,14 @@ def _save_upload(file: UploadFile) -> str:
                 if not _looks_like_capture(chunk):
                     raise HTTPException(
                         status_code=400,
-                        detail="El archivo no parece una captura válida. Se "
-                        "aceptan .pcap, .pcapng y sus versiones comprimidas "
-                        "con gzip (.pcap.gz / .pcapng.gz).",
+                        detail=tr(
+                            "El archivo no parece una captura válida. Se "
+                            "aceptan .pcap, .pcapng y sus versiones comprimidas "
+                            "con gzip (.pcap.gz / .pcapng.gz).",
+                            "The file does not look like a valid capture. Accepted: "
+                            ".pcap, .pcapng and their gzip-compressed versions "
+                            "(.pcap.gz / .pcapng.gz).",
+                        ),
                     )
                 is_gzip = chunk[:3] == _GZIP_PREFIX
                 first_chunk = False
@@ -269,11 +289,11 @@ def _save_upload(file: UploadFile) -> str:
             if total > max_bytes:
                 raise HTTPException(
                     status_code=413,
-                    detail="El archivo supera el máximo de %d MB." % config.MAX_UPLOAD_MB,
+                    detail=tr("El archivo supera el máximo de %d MB.", "The file exceeds the %d MB maximum.") % config.MAX_UPLOAD_MB,
                 )
             tmp.write(chunk)
         if total == 0:
-            raise HTTPException(status_code=400, detail="El archivo está vacío.")
+            raise HTTPException(status_code=400, detail=tr("El archivo está vacío.", "The file is empty."))
         tmp.close()
         if is_gzip:
             expanded = 0
@@ -285,13 +305,13 @@ def _save_upload(file: UploadFile) -> str:
                         if expanded > max_expanded:
                             raise HTTPException(
                                 status_code=413,
-                                detail="La captura gzip supera el máximo descomprimido de %d MB."
+                                detail=tr("La captura gzip supera el máximo descomprimido de %d MB.", "The gzip capture exceeds the %d MB uncompressed maximum.")
                                 % config.MAX_DECOMPRESSED_MB,
                             )
             except (OSError, EOFError, zlib.error) as exc:
                 raise HTTPException(
                     status_code=400,
-                    detail="El archivo gzip no contiene una captura comprimida válida.",
+                    detail=tr("El archivo gzip no contiene una captura comprimida válida.", "The gzip file does not contain a valid compressed capture."),
                 ) from exc
         return tmp.name
     except Exception:
@@ -317,7 +337,7 @@ def analyze(
             if shared_job_store is None:
                 raise HTTPException(
                     status_code=503,
-                    detail="La cola compartida no está configurada.",
+                    detail=tr("La cola compartida no está configurada.", "The shared queue is not configured."),
                 )
             shared_lease_id = shared_job_store.acquire_sync_slot(principal.tenant_id)
         else:
@@ -338,7 +358,7 @@ def analyze(
     except TsharkError as exc:
         raise HTTPException(
             status_code=422,
-            detail="tshark no pudo procesar el archivo: %s" % exc,
+            detail=tr("tshark no pudo procesar el archivo: %s", "tshark could not process the file: %s") % exc,
         )
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):
@@ -365,7 +385,7 @@ def analyze_async(
             if shared_job_store is None:
                 raise HTTPException(
                     status_code=503,
-                    detail="La cola compartida no está configurada.",
+                    detail=tr("La cola compartida no está configurada.", "The shared queue is not configured."),
                 )
             job = shared_job_store.submit(
                 local_path=tmp_path,
@@ -412,7 +432,7 @@ def job_status(
     else:
         job = job_store.get(job_id, owner_id=principal.tenant_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Trabajo no encontrado o expirado.")
+        raise HTTPException(status_code=404, detail=tr("Trabajo no encontrado o expirado.", "Job not found or expired."))
     payload = {"job_id": job.id, "status": job.status, "filename": job.filename}
     if job.status == "done" and job.result is not None:
         payload["result"] = job.result.model_dump()
@@ -432,12 +452,12 @@ def report(
     _principal: Principal = Depends(require_api_token_no_rate_limit),
 ) -> Response:
     """Build the downloadable PDF report (Fase 4)."""
-    pdf_bytes = build_report(request.analysis, request.diagnosis)
+    pdf_bytes = build_report(request.analysis, request.diagnosis, lang=current_lang())
     safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", request.analysis.file.name)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="informe-%s.pdf"' % safe_name
+            "Content-Disposition": 'attachment; filename="%s-%s.pdf"' % (tr("informe", "report"), safe_name)
         },
     )

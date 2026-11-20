@@ -9,6 +9,7 @@ from typing import Deque, Dict
 from fastapi import HTTPException, Request
 
 from . import config
+from .i18n import tr
 
 _WINDOW_SECONDS = 60.0
 _MAX_TRACKED_KEYS = 10000
@@ -55,7 +56,7 @@ class IpRateLimiter:
                 retry = max(1, int(_WINDOW_SECONDS - (now - hits[0])))
                 raise HTTPException(
                     status_code=429,
-                    detail="Demasiadas solicitudes desde esta IP. Inténtalo en unos segundos.",
+                    detail=tr("Demasiadas solicitudes desde esta IP. Inténtalo en unos segundos.", "Too many requests from this IP. Try again in a few seconds."),
                     headers={"Retry-After": str(retry)},
                 )
             hits.append(now)
@@ -86,13 +87,13 @@ class DailyBudget:
             if config.LLM_MAX_CALLS_PER_DAY_GLOBAL and self._global >= config.LLM_MAX_CALLS_PER_DAY_GLOBAL:
                 raise HTTPException(
                     status_code=429,
-                    detail="Límite diario global de diagnósticos IA alcanzado. Vuelve mañana.",
+                    detail=tr("Límite diario global de diagnósticos IA alcanzado. Vuelve mañana.", "The global daily AI limit was reached. Come back tomorrow."),
                 )
             used = self._per_principal.get(principal, 0)
             if config.LLM_MAX_CALLS_PER_DAY and used >= config.LLM_MAX_CALLS_PER_DAY:
                 raise HTTPException(
                     status_code=429,
-                    detail="Has alcanzado el límite diario de consultas IA.",
+                    detail=tr("Has alcanzado el límite diario de consultas IA.", "You reached your daily AI limit."),
                 )
             self._per_principal[principal] = used + 1
             self._global += 1

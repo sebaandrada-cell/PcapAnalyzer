@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 
 from .. import config
 from ..tshark import find_tshark
+from ..i18n import tr
 
 
 class ToolError(Exception):
@@ -41,7 +42,7 @@ def run_tshark_bounded(
     max_bytes = max_bytes or config.TOOL_MAX_OUTPUT_BYTES * 4
     tshark = find_tshark()
     if tshark is None:
-        raise ToolError("tshark no está disponible.")
+        raise ToolError(tr("tshark no está disponible.", "tshark is not available."))
     cmd = [tshark]
     if "-r" in args:
         cmd.append("-n")
@@ -49,7 +50,7 @@ def run_tshark_bounded(
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as exc:
-        raise ToolError("No se pudo ejecutar tshark: %s" % exc)
+        raise ToolError(tr("No se pudo ejecutar tshark: %s", "Could not run tshark: %s") % exc)
     assert proc.stdout is not None and proc.stderr is not None
     out_parts: List[bytes] = []
     err_parts: List[bytes] = []
@@ -116,9 +117,9 @@ def run_tshark(
 def validate_filter(pcap_path: str, display_filter: str) -> None:
     """Raise ToolError unless tshark accepts ``display_filter``."""
     if len(display_filter) > _MAX_FILTER_LEN:
-        raise ToolError("Filtro no válido: demasiado largo (máximo %d caracteres)." % _MAX_FILTER_LEN)
+        raise ToolError(tr("Filtro no válido: demasiado largo (máximo %d caracteres).", "Invalid filter: too long (maximum %d characters).") % _MAX_FILTER_LEN)
     if any(ch in display_filter for ch in "\n\r\x00"):
-        raise ToolError("Filtro no válido: no se admiten saltos de línea.")
+        raise ToolError(tr("Filtro no válido: no se admiten saltos de línea.", "Invalid filter: line breaks are not allowed."))
     try:
         run_tshark([
             "-r", pcap_path, "-Y", display_filter, "-c", "1",
@@ -127,4 +128,4 @@ def validate_filter(pcap_path: str, display_filter: str) -> None:
     except ToolTimeout:
         raise
     except ToolError as exc:
-        raise ToolError("Filtro no válido: %s" % exc)
+        raise ToolError(tr("Filtro no válido: %s", "Invalid filter: %s") % exc)

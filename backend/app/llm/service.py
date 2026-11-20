@@ -8,6 +8,7 @@ from .. import config
 from ..models import AnalysisResult
 from .context import build_llm_context
 from .prompts import QUERY_OUTPUT_SCHEMA, diagnosis_system, query_system
+from ..i18n import tr
 
 
 class AIUnavailableError(RuntimeError):
@@ -62,18 +63,18 @@ def _call(client, *, system: str, user_content: str, output_schema=None):
             status_code=429,
         )
     except anthropic.APIStatusError as exc:
-        raise AIServiceError("Error de la API de Anthropic (%s)." % exc.status_code)
+        raise AIServiceError(tr("Error de la API de Anthropic (%s).", "Anthropic API error (%s).") % exc.status_code)
     except anthropic.APIConnectionError:
-        raise AIServiceError("No se pudo conectar con la API de Anthropic.")
+        raise AIServiceError(tr("No se pudo conectar con la API de Anthropic.", "Could not connect to the Anthropic API."))
 
     if response.stop_reason == "refusal":
-        raise AIServiceError("El modelo declinó procesar esta petición.")
+        raise AIServiceError(tr("El modelo declinó procesar esta petición.", "The model declined to process this request."))
     if response.stop_reason == "max_tokens":
-        raise AIServiceError("La respuesta del modelo se truncó; inténtalo de nuevo.")
+        raise AIServiceError(tr("La respuesta del modelo se truncó; inténtalo de nuevo.", "The model response was cut off; try again."))
 
     text = next((b.text for b in response.content if b.type == "text"), None)
     if not text:
-        raise AIServiceError("El modelo no devolvió texto.")
+        raise AIServiceError(tr("El modelo no devolvió texto.", "The model returned no text."))
     return text, response
 
 
@@ -119,7 +120,7 @@ def translate_query(question: str, analysis: AnalysisResult, lang: str = "es") -
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        raise AIServiceError("El modelo devolvió una respuesta no parseable.")
+        raise AIServiceError(tr("El modelo devolvió una respuesta no parseable.", "The model returned a response that could not be parsed."))
 
     valid_streams = {c.stream_id for c in analysis.conversations.tcp}
     valid_issues = {i.id for i in analysis.issues}

@@ -1,6 +1,8 @@
 // Types mirroring backend/app/models.py — the API contract.
 import { SseParser } from './sse'
 import { supabaseClient } from './supabase'
+import { getFormatLang } from './format'
+import { translate } from './i18n'
 
 export type Severity = 'critical' | 'warning' | 'info'
 
@@ -274,21 +276,27 @@ export interface AnalysisResult {
 
 export const API_BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
+function msg(key: string, params?: Record<string, string | number>): string {
+  return translate(getFormatLang(), key, params)
+}
+
+// Every API call sends the UI language so server errors come back in it.
 async function authHeaders(): Promise<Record<string, string>> {
+  const lang = { 'Accept-Language': getFormatLang() }
   if (supabaseClient) {
     const { data, error } = await supabaseClient.auth.getSession()
     if (error) throw new Error(error.message)
     return data.session
-      ? { Authorization: `Bearer ${data.session.access_token}` }
-      : {}
+      ? { ...lang, Authorization: `Bearer ${data.session.access_token}` }
+      : lang
   }
   const token = sessionStorage.getItem('pcap.apiToken')
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  return token ? { ...lang, Authorization: `Bearer ${token}` } : lang
 }
 
 async function parseOrThrow<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let detail = `Error ${response.status}`
+    let detail = msg('api.httpError', { status: response.status })
     try {
       const body = (await response.json()) as { detail?: string }
       if (body.detail) detail = body.detail
@@ -335,9 +343,9 @@ export async function analyzePcapAsync(file: File): Promise<AnalysisResult> {
     const response = await fetch(`${API_BASE}/jobs/${job_id}`, { headers: await authHeaders() })
     const job = await parseOrThrow<JobStatus>(response)
     if (job.status === 'done' && job.result) return job.result
-    if (job.status === 'error') throw new Error(job.error ?? 'El análisis falló.')
+    if (job.status === 'error') throw new Error(job.error ?? msg('api.analysisFailed'))
   }
-  throw new Error('El análisis tardó demasiado; consulta el estado de la captura o inténtalo de nuevo.')
+  throw new Error(msg('api.analysisTimeout'))
 }
 
 /** Threshold above which the async queue is used instead of /analyze. */
@@ -353,13 +361,13 @@ export async function exportReport(
     body: JSON.stringify({ analysis, diagnosis }),
   })
   if (!response.ok) {
-    throw new Error(`No se pudo generar el informe (${response.status}).`)
+    throw new Error(msg('api.reportFailed', { status: response.status }))
   }
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `informe-${analysis.file.name.replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`
+  link.download = `${getFormatLang() === 'en' ? 'report' : 'informe'}-${analysis.file.name.replace(/[^A-Za-z0-9._-]/g, '_')}.pdf`
   document.body.appendChild(link)
   link.click()
   link.remove()
@@ -436,7 +444,7 @@ export async function deleteSession(id: string): Promise<void> {
     headers: await authHeaders(),
   })
   if (!response.ok && response.status !== 404) {
-    throw new Error(`No se pudo borrar la sesión (${response.status}).`)
+    throw new Error(msg('api.sessionDeleteFailed', { status: response.status }))
   }
 }
 
@@ -477,7 +485,7 @@ export async function chatStream(
     signal,
   })
   if (!response.ok) {
-    let detail = `Error ${response.status}`
+    let detail = msg('api.httpError', { status: response.status })
     try {
       const body = (await response.json()) as { detail?: string }
       if (body.detail) detail = body.detail
@@ -486,7 +494,7 @@ export async function chatStream(
     }
     throw new ChatHttpError(response.status, detail)
   }
-  if (!response.body) throw new ChatHttpError(response.status, 'Respuesta sin cuerpo.')
+  if (!response.body) throw new ChatHttpError(response.status, msg('api.emptyResponse'))
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   const parser = new SseParser()

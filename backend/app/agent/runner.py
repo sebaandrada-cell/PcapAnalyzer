@@ -20,6 +20,7 @@ from ..llm.service import AIServiceError, AIUnavailableError
 from ..sessions import Session, session_store  # noqa: F401  (module attribute; tests swap it)
 from .prompts import INVESTIGATE_SENTINEL, agent_system, investigate_request, limit_reached_note
 from .tools import TOOL_DEFINITIONS, ToolContext, ToolResult, execute_tool, tool_result_block
+from ..i18n import tr
 
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _TASK_BUDGET_BETA = "task-budgets-2026-03-13"
@@ -94,7 +95,7 @@ def _run_tools(
     except (OSError, ValueError) as exc:
         for block in tool_uses:
             emit(TurnEvent("tool_end", {"name": block.name, "ms": 0, "is_error": True, "truncated": False}))
-        raise SessionGoneError("La captura ya no está disponible.") from exc
+        raise SessionGoneError(tr("La captura ya no está disponible.", "The capture is no longer available.")) from exc
     try:
         ctx = ToolContext(session=session, pcap_path=pcap_path, tshark_path=tshark_path)
 
@@ -187,7 +188,7 @@ def run_turn(
 
     spent = session.usage.input_tokens + session.usage.output_tokens
     if spent >= config.SESSION_MAX_TOKENS:
-        raise AgentLimitError("Esta sesión alcanzó su límite de tokens (%d)." % config.SESSION_MAX_TOKENS)
+        raise AgentLimitError(tr("Esta sesión alcanzó su límite de tokens (%d).", "This session reached its token limit (%d).") % config.SESSION_MAX_TOKENS)
     if client is None:
         client = get_client()
         if client is None:
@@ -252,7 +253,7 @@ def run_turn(
         stop_reason = final.stop_reason
 
         if stop_reason == "refusal":
-            raise AIServiceError("El modelo no procesó esta pregunta.")
+            raise AIServiceError(tr("El modelo no procesó esta pregunta.", "The model did not process this question."))
 
         tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
         if stop_reason == "tool_use" and tool_uses:
