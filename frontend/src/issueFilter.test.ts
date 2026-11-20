@@ -40,6 +40,7 @@ test('every generated filter compiles with the display-filter engine', () => {
     issue('dns_unanswered', { query_name: 'x.example', server: '1.1.1.1' }),
     issue('dns_servfail', { server: '2001:db8::53' }),
     issue('ip_duplicate', { ip: '10.0.0.9' }),
+    issue('arp_storm', {}),
     issue('ip_fragmentation_high', {}),
     issue('esp_one_way', {}),
     issue('ike_no_response', {}),
@@ -67,4 +68,8 @@ test('HTTP, DHCP and legacy TLS issues map to filters the local subset can run',
   for (const filter of ['http && ip.addr == 10.0.0.2', 'dhcp', 'tcp.stream in {4, 9}']) {
     assert.ok(compileFilter(filter, new Set(['http', 'dhcp'])).ok, filter)
   }
+})
+
+test('an ARP storm shows the ARP requests', () => {
+  assert.equal(issueFilter(issue('arp_storm', { requests: 150 })), 'arp && _ws.col.info contains "Who has"')
 })

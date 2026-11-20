@@ -9,6 +9,7 @@ from typing import List
 
 from ..models import Issue
 from . import (
+    arp_storm,
     dhcp_problems,
     dns_errors,
     dns_problems,
@@ -38,6 +39,7 @@ DETECTORS = [
     tcp_syn_rst,
     tcp_retransmissions,
     duplicate_ip,
+    arp_storm,
     vpn_tunnels,
     ip_fragmentation,
     mtu_mss,

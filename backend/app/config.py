@@ -160,6 +160,12 @@ ICMP_UNREACHABLE_MIN = _int_env("ICMP_UNREACHABLE_MIN", 1)
 ICMP_TTL_EXCEEDED_MIN = _int_env("ICMP_TTL_EXCEEDED_MIN", 5)
 MAX_ARP_CLAIMS = _int_env("MAX_ARP_CLAIMS", 20000)
 MAX_ARP_MACS_PER_IP = _int_env("MAX_ARP_MACS_PER_IP", 32)
+# ARP storm (detectors/arp_storm.py): ARP requests per second on the segment and
+# how many seconds must reach that rate before it is reported.
+ARP_STORM_RATE_PER_S = _int_env("ARP_STORM_RATE_PER_S", 20)
+ARP_STORM_MIN_SECONDS = _int_env("ARP_STORM_MIN_SECONDS", 3)
+MAX_ARP_STORM_SENDERS = _int_env("MAX_ARP_STORM_SENDERS", 2000)
+MAX_ARP_STORM_TARGETS = _int_env("MAX_ARP_STORM_TARGETS", 50000)
 MAX_EXPERT_ENTRIES = _int_env("MAX_EXPERT_ENTRIES", 500)       # per severity band (see engine)
 MAX_ICMP_ERROR_GROUPS = _int_env("MAX_ICMP_ERROR_GROUPS", 500)
 MAX_RESOLVED_NAMES = _int_env("MAX_RESOLVED_NAMES", 5000)

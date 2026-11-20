@@ -18,6 +18,9 @@ _NEXT_STEP_BY_TYPE = {
                            "interfaz, duplex, saturación de enlaces) entre los extremos.",
     "ip_duplicate": "Localiza las dos MACs que anuncian la misma IP y corrige la "
                     "dirección duplicada (o investiga un posible ARP spoofing).",
+    "arp_storm": "Identifica el equipo que más pregunta: si barre muchas direcciones, "
+                 "busca el escaneo que lo provoca; si repite pocas, revisa su "
+                 "configuración y descarta un bucle de capa 2 (STP).",
     "ike_no_response": "Verifica que el gateway VPN está activo y que UDP 500/4500 "
                        "no está bloqueado en el camino.",
     "esp_one_way": "Revisa el estado de las SAs IPsec en ambos extremos y el routing "
@@ -64,6 +67,9 @@ _NEXT_STEP_BY_TYPE_EN = {
                            "duplex, saturated links) between the endpoints.",
     "ip_duplicate": "Find the two MACs announcing the same IP and fix the duplicate "
                     "address (or investigate possible ARP spoofing).",
+    "arp_storm": "Identify the device asking the most: if it sweeps many addresses, "
+                 "find the scan behind it; if it repeats a few, check its "
+                 "configuration and rule out a layer-2 loop (STP).",
     "ike_no_response": "Verify that the VPN gateway is up and that UDP 500/4500 is "
                        "not blocked along the path.",
     "esp_one_way": "Check the state of the IPsec SAs at both ends and the return "
@@ -224,7 +230,7 @@ _QUERY_RULES: List[Tuple[Tuple[str, ...], str, str, Tuple[str, ...]]] = [
     (("arp", "duplicad", "spoof"),
      "arp",
      "Tráfico ARP",
-     ("ip_duplicate",)),
+     ("ip_duplicate", "arp_storm")),
     (("lent", "latencia", "tarda"),
      "tcp.analysis.ack_rtt > 0.2 || dns.time > 0.5",
      "Respuestas lentas (TCP y DNS)",

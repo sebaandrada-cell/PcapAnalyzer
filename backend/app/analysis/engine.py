@@ -14,7 +14,7 @@ from array import array
 from bisect import bisect_left
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from .. import __version__, config
 from ..detectors import build_issues
@@ -278,6 +278,11 @@ class CaptureState:
     tunnels: Dict[Tuple[str, Tuple[str, str]], TunnelState] = field(default_factory=dict)
     # ARP: IP address -> {MAC -> announcement count} (duplicate IP detection)
     arp_map: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    # ARP requests (storm detection): epoch second -> count, sender MAC ->
+    # [count, sender IPs], and the distinct addresses asked for (capped).
+    arp_requests_per_second: Dict[int, int] = field(default_factory=dict)
+    arp_request_senders: Dict[str, list] = field(default_factory=dict)
+    arp_request_targets: Set[str] = field(default_factory=set)
     # Wireshark-style packet list (first PACKET_LIST_MAX packets)
     packet_rows: List[PacketRow] = field(default_factory=list)
     # HTTP requests + per-stream queue of requests awaiting their response
@@ -1033,6 +1038,8 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
     # ARP announcements (duplicate IP detection)
     arp_ip = fget(layers, "arp.src.proto_ipv4")
     arp_mac = fget(layers, "arp.src.hw_mac")
+    if fget(layers, "arp.opcode") == "1":
+        _track_arp_request(state, ts, arp_mac, arp_ip, fget(layers, "arp.dst.proto_ipv4"))
     if arp_ip and arp_mac and arp_ip != "0.0.0.0":
         if arp_ip not in state.arp_map and len(state.arp_map) >= config.MAX_ARP_CLAIMS:
             state.truncated_sections.add("arp")
@@ -1042,6 +1049,28 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
             state.truncated_sections.add("arp")
             return
         macs[arp_mac] = macs.get(arp_mac, 0) + 1
+
+
+def _track_arp_request(state: CaptureState, ts: float, mac: Optional[str],
+                       sender_ip: Optional[str], target_ip: Optional[str]) -> None:
+    second = int(ts)
+    state.arp_requests_per_second[second] = state.arp_requests_per_second.get(second, 0) + 1
+    if mac:
+        entry = state.arp_request_senders.get(mac)
+        if entry is None:
+            if len(state.arp_request_senders) >= config.MAX_ARP_STORM_SENDERS:
+                state.truncated_sections.add("arp")
+            else:
+                entry = state.arp_request_senders[mac] = [0, []]
+        if entry is not None:
+            entry[0] += 1
+            if sender_ip and sender_ip not in entry[1] and len(entry[1]) < 4:
+                entry[1].append(sender_ip)
+    if target_ip and target_ip not in state.arp_request_targets:
+        if len(state.arp_request_targets) < config.MAX_ARP_STORM_TARGETS:
+            state.arp_request_targets.add(target_ip)
+        else:
+            state.truncated_sections.add("arp")
 
 
 def _build_summary(state: CaptureState) -> Summary:
