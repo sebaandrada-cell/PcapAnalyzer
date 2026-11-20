@@ -891,6 +891,7 @@ button.link {
 }
 .demo-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   flex: 0 0 auto;
@@ -907,8 +908,12 @@ button.link {
   white-space: nowrap;
 }
 .demo-signin,
-.demo-link {
+.demo-link,
+.demo-link-inline {
   color: var(--accent);
+}
+.demo-link-inline {
+  white-space: nowrap;
 }
 .demo-link {
   display: block;

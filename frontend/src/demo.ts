@@ -15,6 +15,7 @@ export interface DemoData {
 
 export const DEMO_HASH = '#demo'
 export const BUY_URL = 'https://sebaandrada6.gumroad.com/l/hspgx'
+export const GITHUB_URL = 'https://github.com/sebaandrada-cell/PcapAnalyzer'
 
 /** True while the URL fragment is `#demo`; follows back/forward and link clicks. */
 export function useDemoRoute(): boolean {

@@ -51,6 +51,7 @@ const es: Dict = {
     banner:
       'Demo con una captura de ejemplo. Así trabaja PcapAnalyzer con tus capturas, que en la versión completa se analizan en tu propia máquina.',
     buy: 'Descargar gratis',
+    github: 'Código en GitHub',
     signIn: 'Iniciar sesión',
     loading: 'Cargando la demo…',
     error: 'No se pudo cargar la demo.',
@@ -537,6 +538,7 @@ const en: Dict = {
     banner:
       'Demo with a sample capture. This is how PcapAnalyzer works on your captures, which the full version analyzes on your own machine.',
     buy: 'Download free',
+    github: 'Source on GitHub',
     signIn: 'Sign in',
     loading: 'Loading the demo…',
     error: 'The demo could not be loaded.',
