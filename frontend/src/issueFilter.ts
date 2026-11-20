@@ -13,6 +13,11 @@ export function quoteString(text: string): string {
 
 const addr = (address: string): string => `${isV6(address) ? 'ipv6' : 'ip'}.addr == ${address}`
 
+// Wireshark protocol names of the tunnel types the backend reports.
+const TUNNEL_PROTOCOLS: Record<string, string> = {
+  esp: 'esp', ike: 'isakmp', wireguard: 'wg', openvpn: 'openvpn', gre: 'gre', l2tp: 'l2tp', teredo: 'teredo',
+}
+
 /** Best display filter for an issue, or null when its evidence does not identify packets. */
 export function issueFilter(issue: Issue): string | null {
   const ev = issue.evidence
@@ -52,6 +57,13 @@ export function issueFilter(issue: Issue): string | null {
   }
   if (issue.type.startsWith('dhcp_')) return 'dhcp'
 
+  if (issue.type.startsWith('tunnel_')) {
+    const proto = TUNNEL_PROTOCOLS[str(ev['tunnel_type']) ?? '']
+    if (!proto) return null
+    const peers = [ev['sender'] ?? ev['initiator'] ?? ev['peer_a'], ev['silent_peer'] ?? ev['responder'] ?? ev['peer_b']]
+      .map(str).filter((p): p is string => Boolean(p))
+    return [proto, ...peers.map(addr)].join(' && ')
+  }
   if (issue.type === 'arp_storm') return 'arp && _ws.col.info contains "Who has"'
 
   const ip = str(ev['ip'])

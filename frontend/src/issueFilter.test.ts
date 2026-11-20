@@ -73,3 +73,17 @@ test('HTTP, DHCP and legacy TLS issues map to filters the local subset can run',
 test('an ARP storm shows the ARP requests', () => {
   assert.equal(issueFilter(issue('arp_storm', { requests: 150 })), 'arp && _ws.col.info contains "Who has"')
 })
+
+test('tunnel issues filter on the tunnel protocol and its peers', () => {
+  assert.equal(issueFilter(issue('tunnel_one_way', { tunnel_type: 'gre', sender: '10.0.0.1', silent_peer: '10.0.0.2' })),
+    'gre && ip.addr == 10.0.0.1 && ip.addr == 10.0.0.2')
+  assert.equal(issueFilter(issue('tunnel_handshake_no_response', { tunnel_type: 'wireguard', initiator: '10.0.0.1', responder: '10.0.0.2' })),
+    'wg && ip.addr == 10.0.0.1 && ip.addr == 10.0.0.2')
+  assert.equal(issueFilter(issue('tunnel_renegotiation', { tunnel_type: 'ike', peer_a: '10.0.0.1', peer_b: '10.0.0.2' })),
+    'isakmp && ip.addr == 10.0.0.1 && ip.addr == 10.0.0.2')
+  assert.equal(issueFilter(issue('tunnel_renegotiation', { tunnel_type: 'unknown' })), null)
+  for (const type of ['tunnel_one_way', 'tunnel_handshake_no_response']) {
+    const filter = issueFilter(issue(type, { tunnel_type: 'openvpn', sender: '10.0.0.1', silent_peer: '10.0.0.2', initiator: '10.0.0.1', responder: '10.0.0.2' }))
+    assert.ok(filter && compileFilter(filter).ok, `${type}: ${filter}`)
+  }
+})

@@ -233,6 +233,11 @@ class Tunnel(BaseModel):
     packets_a_to_b: int
     packets_b_to_a: int
     bytes: int
+    bytes_a_to_b: int = 0
+    bytes_b_to_a: int = 0
+    duration_s: float = 0.0
+    max_idle_s: float = 0.0  # longest gap between two packets of the tunnel
+    handshakes: int = 0      # answered handshakes seen (IKE init, WireGuard, OpenVPN)
 
 
 class Issue(BaseModel):

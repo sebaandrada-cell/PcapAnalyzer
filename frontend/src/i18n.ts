@@ -123,6 +123,8 @@ const es: Dict = {
   talkers: {
     title: 'Top talkers',
     tunnels: 'Túneles VPN detectados',
+    tunnelIdle: 'sin tráfico máx. {time}',
+    tunnelHandshakes: '{count} handshake(s)',
     viewConvs: 'Ver conversaciones de este host',
   },
   chart: {
@@ -607,6 +609,8 @@ const en: Dict = {
   talkers: {
     title: 'Top talkers',
     tunnels: 'Detected VPN tunnels',
+    tunnelIdle: 'max idle {time}',
+    tunnelHandshakes: '{count} handshake(s)',
     viewConvs: "View this host's conversations",
   },
   chart: {

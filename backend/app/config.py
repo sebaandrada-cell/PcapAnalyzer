@@ -119,6 +119,13 @@ PMTUD_MIN_FULLSIZE_RETRANS = _int_env("PMTUD_MIN_FULLSIZE_RETRANS", 3)
 FRAG_HIGH_PCT = float(os.environ.get("FRAG_HIGH_PCT", 5.0))
 ESP_ONE_WAY_MIN = _int_env("ESP_ONE_WAY_MIN", 3)
 IKE_NO_RESPONSE_MIN = _int_env("IKE_NO_RESPONSE_MIN", 2)
+# WireGuard / OpenVPN handshake requests with no answer before reporting it.
+TUNNEL_HANDSHAKE_NO_RESPONSE_MIN = _int_env("TUNNEL_HANDSHAKE_NO_RESPONSE_MIN", 2)
+# Renegotiation: at least this many answered handshakes on one tunnel, at an
+# average interval below TUNNEL_RENEGOTIATION_MAX_INTERVAL_S (WireGuard rekeys
+# every 120 s by design, IKE usually every hours).
+TUNNEL_RENEGOTIATION_MIN = _int_env("TUNNEL_RENEGOTIATION_MIN", 4)
+TUNNEL_RENEGOTIATION_MAX_INTERVAL_S = float(os.environ.get("TUNNEL_RENEGOTIATION_MAX_INTERVAL_S", 60.0))
 TOP_TALKERS_LIMIT = _int_env("TOP_TALKERS_LIMIT", 10)
 
 # AI layer (Fase 3). Credentials come from the environment (ANTHROPIC_API_KEY

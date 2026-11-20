@@ -260,7 +260,8 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
   },
   "tunnels": [ { "type": "esp", "peer_a": "10.0.0.1", "peer_b": "10.0.0.6",
                  "packets": 4, "packets_a_to_b": 4, "packets_b_to_a": 0,
-                 "bytes": 328 } ],
+                 "bytes": 328, "bytes_a_to_b": 328, "bytes_b_to_a": 0,
+                 "duration_s": 3.0, "max_idle_s": 1.0, "handshakes": 0 } ],
   "issues": [
     { "id": "tcp-syn-rst-1", "type": "tcp_syn_rst", "severity": "critical",
       "title": "SYN respondido con RST inmediato",
@@ -272,7 +273,7 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 }
 ```
 
-`time_series` es dispersa (solo segundos con tráfico); `t` es el offset en segundos desde el inicio de la captura. Las conversaciones TCP incluyen además `mss_client`, `mss_server` y `handshake_rtt_ms`. `tunnels` identifica pasivamente tráfico VPN/túnel: ESP, IKE/ISAKMP, WireGuard, OpenVPN, GRE y L2TP.
+`time_series` es dispersa (solo segundos con tráfico); `t` es el offset en segundos desde el inicio de la captura. Las conversaciones TCP incluyen además `mss_client`, `mss_server` y `handshake_rtt_ms`. `tunnels` identifica pasivamente tráfico VPN/túnel: ESP, IKE/ISAKMP, WireGuard, OpenVPN, GRE, L2TP y Teredo, con bytes por sentido, duración, el mayor tiempo sin tráfico y los handshakes completados (inicio de IKE, WireGuard y OpenVPN).
 
 ### Detectores (`issues`)
 
@@ -289,7 +290,10 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 | `arp_storm` | ≥ `ARP_STORM_RATE_PER_S` (20) peticiones ARP por segundo durante ≥ `ARP_STORM_MIN_SECONDS` (3) segundos; indica quién pregunta y cuántas direcciones distintas | `warning` |
 | `ike_no_response` | ≥ 2 mensajes IKE sin respuesta observada; una captura parcial o asimétrica puede ocultarla | `warning` |
 | `ike_handshake_incomplete` | IKE bidireccional pero sin tráfico ESP posterior entre esos peers | `warning` |
-| `esp_one_way` | ESP/WireGuard/OpenVPN en un solo sentido (≥ 3 paquetes) → túnel roto | `warning` |
+| `esp_one_way` | ESP en un solo sentido (≥ `ESP_ONE_WAY_MIN`, 3 paquetes) → túnel roto | `warning` |
+| `tunnel_one_way` | WireGuard, OpenVPN, GRE, L2TP o Teredo en un solo sentido (≥ 3 paquetes) | `warning` |
+| `tunnel_handshake_no_response` | ≥ `TUNNEL_HANDSHAKE_NO_RESPONSE_MIN` (2) inicios de handshake WireGuard/OpenVPN sin respuesta: puerto filtrado, peer caído o clave desconocida | `warning` |
+| `tunnel_renegotiation` | ≥ `TUNNEL_RENEGOTIATION_MIN` (4) handshakes completados en un túnel, uno cada menos de `TUNNEL_RENEGOTIATION_MAX_INTERVAL_S` (60 s) de media: el túnel se cae y vuelve | `warning` |
 | `ip_fragments_incomplete` | Se vio fragmento inicial sin fragmento final; alerta de visibilidad incompleta, no prueba pérdida | `warning` |
 | `ip_fragmentation_high` | > 5 % de los paquetes son fragmentos IP | `warning` |
 | `icmp_frag_needed` | ICMP Fragmentation Needed / ICMPv6 Packet Too Big (MTU del camino) | `warning` |
@@ -323,7 +327,7 @@ agente de IA y el PDF:
 | Nota | Qué detecta | Efecto |
 |---|---|---|
 | `duplicate_frames` | Tramas idénticas a otra vista hace menos de 1 ms (port mirror que copia entrada y salida, captura en varias interfaces) | Se dejan fuera del análisis: no cuentan como retransmisiones ni ACK duplicados. Siguen en los totales y en la lista, atenuadas |
-| `one_way` | Conversaciones TCP donde un lado confirma datos que no están en la captura | Si son mayoría, los avisos de tipo «sin respuesta» (`dns_unanswered`, `ike_no_response`, `esp_one_way`, `dhcp_no_response`) bajan a `info` con una advertencia |
+| `one_way` | Conversaciones TCP donde un lado confirma datos que no están en la captura | Si son mayoría, los avisos de tipo «sin respuesta» (`dns_unanswered`, `ike_no_response`, `esp_one_way`, `tunnel_one_way`, `tunnel_handshake_no_response`, `dhcp_no_response`) bajan a `info` con una advertencia |
 | `truncated_frames` | Tramas recortadas por el límite de bytes por paquete (snaplen) | Aviso: HTTP, TLS o DNS pueden salir incompletos |
 | `midstream` | Conexiones ya abiertas al empezar la captura | Aviso: sin MSS, escalado de ventana ni tiempo de establecimiento |
 | `malformed_packets` | Paquetes con campos ilegibles | Se omiten y se cuentan; el análisis continúa |

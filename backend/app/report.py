@@ -314,13 +314,17 @@ def build_report(analysis: AnalysisResult, diagnosis: Optional[str] = None,
     if analysis.tunnels:
         flow.append(Paragraph(T("Túneles VPN detectados", "Detected VPN tunnels"), styles["h2"]))
         flow.append(_table(
-            [[T("Tipo", "Type"), "Peer A", "Peer B", T("Paquetes", "Packets"), "Bytes"]]
+            [[T("Tipo", "Type"), "Peer A", "Peer B", T("Paquetes", "Packets"), "Bytes",
+              T("Duración", "Duration"), T("Sin tráfico máx.", "Max idle"), "Handshakes"]]
             + [
-                [tunnel.type.upper(), _esc(tunnel.peer_a), _esc(tunnel.peer_b),
-                 str(tunnel.packets), _fmt_bytes(tunnel.bytes)]
+                [tunnel.type.upper(), Paragraph(_esc(tunnel.peer_a), styles["cell"]),
+                 Paragraph(_esc(tunnel.peer_b), styles["cell"]),
+                 str(tunnel.packets), _fmt_bytes(tunnel.bytes),
+                 _fmt_duration(tunnel.duration_s), _fmt_duration(tunnel.max_idle_s),
+                 str(tunnel.handshakes)]
                 for tunnel in analysis.tunnels
             ],
-            col_widths=[26 * mm, 42 * mm, 42 * mm, 25 * mm, 28 * mm],
+            col_widths=[20 * mm, 34 * mm, 34 * mm, 17 * mm, 19 * mm, 17 * mm, 19 * mm, 18 * mm],
         ))
 
     if analysis.service_response_times:
