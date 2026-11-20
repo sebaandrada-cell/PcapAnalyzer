@@ -9,6 +9,11 @@ from typing import List
 
 from ..models import Issue
 from . import (
+    arp_spoofing,
+    cleartext_credentials,
+    insecure_protocols,
+    ip_fragment_overlap,
+    port_scan,
     arp_storm,
     dhcp_problems,
     dns_errors,
@@ -58,6 +63,11 @@ DETECTORS = [
     http_errors,
     dhcp_problems,
     tls_legacy,
+    port_scan,
+    cleartext_credentials,
+    insecure_protocols,
+    arp_spoofing,
+    ip_fragment_overlap,
 ]
 
 

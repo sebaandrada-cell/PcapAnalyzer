@@ -288,6 +288,11 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 | `tls_alert` | Otras alertas TLS fatales (bad_certificate, unknown_ca, …) | `warning` |
 | `ip_duplicate` | Una IP aparece como origen ARP desde ≥ 2 MACs; también puede ser proxy ARP o segmentos distintos | `warning` |
 | `arp_storm` | ≥ `ARP_STORM_RATE_PER_S` (20) peticiones ARP por segundo durante ≥ `ARP_STORM_MIN_SECONDS` (3) segundos; indica quién pregunta y cuántas direcciones distintas | `warning` |
+| `port_scan` | Un origen prueba ≥ `SCAN_MIN_PORTS` (20) puertos de un equipo o un puerto en ≥ `SCAN_MIN_HOSTS` (20) equipos y como mucho el `SCAN_MAX_ANSWERED_PCT` (50 %) responde con SYN-ACK | `warning` |
+| `cleartext_credentials` | Inicio de sesión sin cifrar (FTP `PASS`, POP3 `PASS`, IMAP `LOGIN`, SMTP `AUTH`, HTTP Basic). Solo informa del protocolo, el servidor y el número de logins: nunca guarda ni muestra usuario o contraseña | `warning` |
+| `insecure_protocol` | Telnet, SMBv1 sobre TCP o SNMP v1/v2c en uso (los anuncios NetBIOS por UDP 138 no cuentan) | `warning` |
+| `arp_spoofing` | Una MAC reclama ≥ `ARP_SPOOF_MIN_IPS` (2) IPs y otra MAC también reclama alguna de ellas (envenenamiento ARP; también puede ser VRRP/HSRP) | `critical` |
+| `ip_fragment_overlap` | Fragmentos IP que se solapan con datos distintos (`ip.fragment.overlap.conflict`): teardrop, evasión de IDS o pila rota | `critical` |
 | `ike_no_response` | ≥ 2 mensajes IKE sin respuesta observada; una captura parcial o asimétrica puede ocultarla | `warning` |
 | `ike_handshake_incomplete` | IKE bidireccional pero sin tráfico ESP posterior entre esos peers | `warning` |
 | `esp_one_way` | ESP en un solo sentido (≥ `ESP_ONE_WAY_MIN`, 3 paquetes) → túnel roto | `warning` |

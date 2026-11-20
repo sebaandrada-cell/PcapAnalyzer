@@ -18,6 +18,16 @@ _NEXT_STEP_BY_TYPE = {
                            "interfaz, duplex, saturación de enlaces) entre los extremos.",
     "ip_duplicate": "Localiza las dos MACs que anuncian la misma IP y corrige la "
                     "dirección duplicada (o investiga un posible ARP spoofing).",
+    "port_scan": "Identifica el equipo que escanea y confirma si es una herramienta "
+                 "autorizada; si no lo es, aíslalo y revísalo.",
+    "cleartext_credentials": "Cambia el servicio a su versión cifrada y cambia las "
+                             "contraseñas que han viajado en claro.",
+    "insecure_protocol": "Sustituye el protocolo por su versión segura (SSH, SMB 2/3, "
+                         "SNMPv3) y desactiva el antiguo en los servidores.",
+    "arp_spoofing": "Localiza el puerto del switch de esa MAC, aíslalo y activa "
+                    "Dynamic ARP Inspection en la VLAN.",
+    "ip_fragment_overlap": "Bloquea los fragmentos solapados en el cortafuegos e "
+                           "identifica el equipo que los envía.",
     "arp_storm": "Identifica el equipo que más pregunta: si barre muchas direcciones, "
                  "busca el escaneo que lo provoca; si repite pocas, revisa su "
                  "configuración y descarta un bucle de capa 2 (STP).",
@@ -73,6 +83,16 @@ _NEXT_STEP_BY_TYPE_EN = {
                            "duplex, saturated links) between the endpoints.",
     "ip_duplicate": "Find the two MACs announcing the same IP and fix the duplicate "
                     "address (or investigate possible ARP spoofing).",
+    "port_scan": "Identify the scanning host and confirm whether it is an authorised "
+                 "tool; if not, isolate and inspect it.",
+    "cleartext_credentials": "Move the service to its encrypted version and change the "
+                             "passwords that travelled in clear.",
+    "insecure_protocol": "Replace the protocol with its secure version (SSH, SMB 2/3, "
+                         "SNMPv3) and disable the old one on the servers.",
+    "arp_spoofing": "Find the switch port of that MAC, isolate it and enable Dynamic "
+                    "ARP Inspection on the VLAN.",
+    "ip_fragment_overlap": "Block overlapping fragments at the firewall and identify the "
+                           "host sending them.",
     "arp_storm": "Identify the device asking the most: if it sweeps many addresses, "
                  "find the scan behind it; if it repeats a few, check its "
                  "configuration and rule out a layer-2 loop (STP).",

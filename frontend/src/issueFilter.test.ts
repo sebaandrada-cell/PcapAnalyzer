@@ -87,3 +87,24 @@ test('tunnel issues filter on the tunnel protocol and its peers', () => {
     assert.ok(filter && compileFilter(filter).ok, `${type}: ${filter}`)
   }
 })
+
+test('security issues map to filters the local subset can run', () => {
+  const cases: Array<[Issue, string]> = [
+    [issue('port_scan', { scanner: '10.0.0.66', kind: 'ports', target: '10.0.0.10' }),
+      'tcp && ip.src == 10.0.0.66 && ip.dst == 10.0.0.10'],
+    [issue('port_scan', { scanner: '10.0.0.66', kind: 'hosts', port: 445 }),
+      'tcp.dstport == 445 && ip.src == 10.0.0.66'],
+    [issue('cleartext_credentials', { protocol: 'FTP', server: '10.0.0.21' }), 'ftp && ip.addr == 10.0.0.21'],
+    [issue('cleartext_credentials', { protocol: 'HTTP Basic', server: '10.0.0.80' }), 'http && ip.addr == 10.0.0.80'],
+    [issue('insecure_protocol', { protocol: 'SMBv1', servers: ['10.0.0.45'] }), 'smb && ip.addr == 10.0.0.45'],
+    [issue('insecure_protocol', { protocol: 'SNMP v2c', servers: ['10.0.0.1', '10.0.0.2'] }), 'snmp'],
+    [issue('arp_spoofing', { mac: '02:00:00:00:00:66' }), 'arp && _ws.col.info contains "02:00:00:00:00:66"'],
+    [issue('ip_fragment_overlap', { source: '10.1.1.1', destination: '10.0.0.2' }),
+      'ip.addr == 10.1.1.1 && ip.addr == 10.0.0.2 && _ws.col.info matches "fragment"'],
+  ]
+  for (const [sample, expected] of cases) {
+    const filter = issueFilter(sample)
+    assert.equal(filter, expected, sample.type)
+    assert.ok(compileFilter(filter!).ok, `${sample.type}: ${filter}`)
+  }
+})
