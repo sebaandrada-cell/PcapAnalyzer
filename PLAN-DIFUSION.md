@@ -1,6 +1,6 @@
 # Plan de difusión — PcapAnalyzer (v2 · 24-oct-2026)
 
-**Producto:** PcapAnalyzer 1.4.1 · descarga self-hosted · 5 € pago único
+**Producto:** PcapAnalyzer 1.5.0 · descarga self-hosted · gratis y de código abierto (Apache 2.0)
 **Compra:** https://sebaandrada6.gumroad.com/l/hspgx
 **Landing (ES/EN, pública):** https://claude.ai/artifact/NAX5Yw8wfuP86odEKtS7uv
 **Público:** sysadmins, MSPs y NOC de primer nivel. Gente que ya usa Wireshark y no
@@ -12,6 +12,7 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
+| Paquete 1.5.0 (gratis, Apache 2.0; 27 detectores con seguridad, túneles y tormenta ARP; app en inglés según el navegador) | ☐ pendiente de subir a Gumroad |
 | Paquete 1.4.1 (investigación con IA, 21 detectores, calidad de la captura, filtros reales de Wireshark sobre toda la captura), sin secretos ni datos internos | ☑ subido a Gumroad el 2026-11-17 (sustituye al 1.4.0; sha256 verificado en la descarga real) |
 | Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
 | `docker compose` probado de punta a punta (22 comprobaciones) | ✔ en CI (`scripts/verify-bundle.sh`) |
@@ -105,7 +106,7 @@ qué falla, por qué y cuál es el siguiente paso. Está pensada para MSPs, sysa
 de primer nivel que no quieren pasar media hora leyendo Wireshark paquete a paquete.
 
 Qué hace:
-- Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK
+- Detecta 27 tipos de problema, también de seguridad: bloqueos de firewall (SYN→RST), retransmisiones y ACK
   duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación,
   errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
 - Investigación con IA que aplica filtros reales y mira los flujos, con evidencia clicable y chat de seguimiento. Usa tu propia clave de
@@ -117,7 +118,7 @@ Lo importante: se ejecuta en tu propia máquina con Docker (./start.sh). Las cap
 que suelen llevar datos sensibles, no salen de tu equipo. Solo si activas la IA real se
 envía un resumen en JSON, nunca el pcap.
 
-Pago único de 5 €, self-hosted, sin suscripción.
+Gratis y de código abierto (Apache 2.0), self-hosted.
 https://sebaandrada6.gumroad.com/l/hspgx
 
 Puedes verla funcionando sin registrarte (con una captura de ejemplo):
@@ -135,7 +136,7 @@ I kept scrolling through Wireshark packet by packet for routine troubleshooting,
 built PcapAnalyzer: drop in a .pcap/.pcapng (gzip too) and it tells you what is wrong,
 why, and what to check next.
 
-- 21 detectors: firewall blocks (SYN→RST), retransmissions, duplicate ACKs, loss and
+- 27 detectors, security included: firewall blocks (SYN→RST), retransmissions, duplicate ACKs, loss and
   reordering, zero/full window, PMTUD black holes, IP fragmentation, ICMP errors,
   unanswered/slow DNS, HTTP errors and slow responses, DHCP failures, TLS handshake
   failures and obsolete TLS versions, VPN tunnel problems, duplicate IPs.
@@ -150,7 +151,7 @@ It runs on your machine (docker compose, one script). Captures are analyzed and
 discarded; only if you enable the real AI is a JSON summary (never the raw pcap) sent
 to the model.
 
-One-time €5, personal license, self-hosted: https://sebaandrada6.gumroad.com/l/hspgx
+Free and open source (Apache 2.0), self-hosted: https://sebaandrada6.gumroad.com/l/hspgx
 You can see it working with a sample capture, no sign-up: https://pcap-analyzer-seven.vercel.app/#demo
 (the demo's diagnosis text is generated without AI, and says so)
 
