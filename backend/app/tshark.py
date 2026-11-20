@@ -106,6 +106,8 @@ FIELDS: List[str] = [
     "esp.spi",
     "arp.src.proto_ipv4",
     "arp.src.hw_mac",
+    "arp.opcode",
+    "arp.dst.proto_ipv4",
     "dhcp.id",
     "dhcp.option.dhcp",
     "dhcp.hw.mac_addr",

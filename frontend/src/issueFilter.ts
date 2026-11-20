@@ -52,6 +52,8 @@ export function issueFilter(issue: Issue): string | null {
   }
   if (issue.type.startsWith('dhcp_')) return 'dhcp'
 
+  if (issue.type === 'arp_storm') return 'arp && _ws.col.info contains "Who has"'
+
   const ip = str(ev['ip'])
   if (issue.type === 'ip_duplicate' && ip) return `arp && _ws.col.info contains ${quoteString(ip)}`
 

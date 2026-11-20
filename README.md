@@ -230,7 +230,7 @@ Todos los endpoints excepto `GET /health` requieren `Authorization: Bearer <toke
 
 Cuotas predeterminadas por token: 30 solicitudes/minuto para operaciones de análisis, IA e informes (las consultas de estado del trabajo no consumen esa cuota) y hasta 2 análisis concurrentes. La cola global admite hasta 4 trabajos en espera, con hasta 1 GiB combinado de capturas pendientes, y rechaza nuevas solicitudes con `429` cuando se llena. Se conservan como máximo 20 resultados asíncronos (`MAX_RETAINED_JOBS`). `MAX_UPLOAD_MB` limita la subida comprimida y `MAX_DECOMPRESSED_MB` limita el tamaño expandido de archivos gzip.
 
-El motor aplica límites por sección (`MAX_CONVERSATIONS`, `MAX_TRACKED_TALKERS`, `MAX_TIME_SERIES_BUCKETS`, `MAX_DNS_TRANSACTIONS`, `MAX_HTTP_REQUESTS`, `MAX_TLS_SESSIONS`, `MAX_TLS_ALERTS`, `MAX_FRAGMENT_GROUPS`, `MAX_DHCP_TRANSACTIONS`, `MAX_ARP_CLAIMS` y `MAX_ISSUES`). Si alcanza uno, `meta.truncated_sections` lo identifica y el dashboard avisa que esos resultados son parciales. Estos topes de memoria siguen configurados por proceso; Supabase comparte identidad, cuotas de API, acceso a trabajos, almacenamiento temporal y cola de análisis entre réplicas.
+El motor aplica límites por sección (`MAX_CONVERSATIONS`, `MAX_TRACKED_TALKERS`, `MAX_TIME_SERIES_BUCKETS`, `MAX_DNS_TRANSACTIONS`, `MAX_HTTP_REQUESTS`, `MAX_TLS_SESSIONS`, `MAX_TLS_ALERTS`, `MAX_FRAGMENT_GROUPS`, `MAX_DHCP_TRANSACTIONS`, `MAX_ARP_CLAIMS`, `MAX_ARP_STORM_SENDERS`, `MAX_ARP_STORM_TARGETS` y `MAX_ISSUES`). Si alcanza uno, `meta.truncated_sections` lo identifica y el dashboard avisa que esos resultados son parciales. Estos topes de memoria siguen configurados por proceso; Supabase comparte identidad, cuotas de API, acceso a trabajos, almacenamiento temporal y cola de análisis entre réplicas.
 
 ## Uso
 
@@ -286,6 +286,7 @@ curl -s -H "Authorization: Bearer $API_TOKENS" \
 | `tls_handshake_failure` | Alerta TLS `handshake_failure` (código 40) | `warning` |
 | `tls_alert` | Otras alertas TLS fatales (bad_certificate, unknown_ca, …) | `warning` |
 | `ip_duplicate` | Una IP aparece como origen ARP desde ≥ 2 MACs; también puede ser proxy ARP o segmentos distintos | `warning` |
+| `arp_storm` | ≥ `ARP_STORM_RATE_PER_S` (20) peticiones ARP por segundo durante ≥ `ARP_STORM_MIN_SECONDS` (3) segundos; indica quién pregunta y cuántas direcciones distintas | `warning` |
 | `ike_no_response` | ≥ 2 mensajes IKE sin respuesta observada; una captura parcial o asimétrica puede ocultarla | `warning` |
 | `ike_handshake_incomplete` | IKE bidireccional pero sin tráfico ESP posterior entre esos peers | `warning` |
 | `esp_one_way` | ESP/WireGuard/OpenVPN en un solo sentido (≥ 3 paquetes) → túnel roto | `warning` |
