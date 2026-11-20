@@ -103,6 +103,12 @@ export interface Tunnel {
   packets_a_to_b: number
   packets_b_to_a: number
   bytes: number
+  // Added in 1.5; optional so older analyses still render.
+  bytes_a_to_b?: number
+  bytes_b_to_a?: number
+  duration_s?: number
+  max_idle_s?: number
+  handshakes?: number
 }
 
 export interface PacketRow {

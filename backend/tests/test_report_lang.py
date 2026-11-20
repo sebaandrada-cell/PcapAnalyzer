@@ -72,3 +72,16 @@ def test_report_endpoint_uses_the_request_language(client, monkeypatch):
     response = client.post("/report", json=body, headers={"Accept-Language": "en"})
     assert response.status_code == 200
     assert seen["lang"] == "en"
+
+
+def test_tunnel_table_shows_duration_idle_and_handshakes(texts):
+    from app.models import Tunnel
+    analysis = _analysis()
+    analysis.tunnels = [Tunnel(type="wireguard", peer_a="10.0.0.1", peer_b="203.0.113.9",
+                               packets=4, packets_a_to_b=2, packets_b_to_a=2, bytes=1000,
+                               bytes_a_to_b=400, bytes_b_to_a=600, duration_s=31.0,
+                               max_idle_s=30.0, handshakes=1)]
+    report.build_report(analysis, lang="en")
+    joined = "\n".join(texts)
+    for expected in ("Duration", "Max idle", "Handshakes", "31.0 s", "30.0 s"):
+        assert expected in joined, expected

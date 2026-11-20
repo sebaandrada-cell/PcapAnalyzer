@@ -19,6 +19,7 @@ from ..tshark import field as fget
 # capture only sees one direction of the traffic.
 NO_RESPONSE_TYPES = frozenset({
     "dns_unanswered", "ike_no_response", "esp_one_way", "dhcp_no_response",
+    "tunnel_one_way", "tunnel_handshake_no_response",
 })
 
 _ONE_WAY_CAVEAT = (

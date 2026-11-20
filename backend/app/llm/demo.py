@@ -23,6 +23,12 @@ _NEXT_STEP_BY_TYPE = {
                  "configuración y descarta un bucle de capa 2 (STP).",
     "ike_no_response": "Verifica que el gateway VPN está activo y que UDP 500/4500 "
                        "no está bloqueado en el camino.",
+    "tunnel_one_way": "Comprueba que el otro extremo del túnel está vivo, que sus "
+                      "claves o SAs siguen vigentes y que la vuelta no sale por otra ruta.",
+    "tunnel_handshake_no_response": "Confirma que el puerto UDP del túnel llega al peer "
+                                    "y que este tiene configurada la clave del cliente.",
+    "tunnel_renegotiation": "Busca pérdida intermitente o un NAT que caduque la sesión, "
+                            "y revisa los tiempos de vida, DPD y keepalive en ambos extremos.",
     "esp_one_way": "Revisa el estado de las SAs IPsec en ambos extremos y el routing "
                    "de retorno del túnel.",
     "ip_fragments_incomplete": "Busca filtros que descarten fragmentos IP y revisa el "
@@ -72,6 +78,12 @@ _NEXT_STEP_BY_TYPE_EN = {
                  "configuration and rule out a layer-2 loop (STP).",
     "ike_no_response": "Verify that the VPN gateway is up and that UDP 500/4500 is "
                        "not blocked along the path.",
+    "tunnel_one_way": "Check that the far end of the tunnel is alive, its keys or SAs "
+                      "are still valid and the return path does not take another route.",
+    "tunnel_handshake_no_response": "Confirm the tunnel's UDP port reaches the peer and "
+                                    "that the peer has the client's key configured.",
+    "tunnel_renegotiation": "Look for intermittent loss or a NAT expiring the session, and "
+                            "check lifetimes, DPD and keepalives at both ends.",
     "esp_one_way": "Check the state of the IPsec SAs at both ends and the return "
                    "routing of the tunnel.",
     "ip_fragments_incomplete": "Look for filters that drop IP fragments and review "
@@ -215,10 +227,11 @@ _QUERY_RULES: List[Tuple[Tuple[str, ...], str, str, Tuple[str, ...]]] = [
      "tcp.flags.reset == 1",
      "Paquetes TCP con el flag RST",
      ("tcp_syn_rst",)),
-    (("vpn", "esp", "ike", "tunel", "ipsec"),
-     "esp || isakmp",
-     "Tráfico de túneles IPsec (ESP e IKE)",
-     ("ike_no_response", "ike_handshake_incomplete", "esp_one_way")),
+    (("vpn", "esp", "ike", "tunel", "ipsec", "wireguard", "openvpn", "gre", "l2tp", "teredo"),
+     "esp || isakmp || wg || openvpn || gre || l2tp || teredo",
+     "Tráfico de túneles (IPsec, WireGuard, OpenVPN, GRE, L2TP, Teredo)",
+     ("ike_no_response", "ike_handshake_incomplete", "esp_one_way", "tunnel_one_way",
+      "tunnel_handshake_no_response", "tunnel_renegotiation")),
     (("tls", "ssl", "certific", "handshake"),
      "tls",
      "Tráfico TLS",

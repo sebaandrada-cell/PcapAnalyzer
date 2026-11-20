@@ -1,6 +1,7 @@
 import type { AnalysisResult, TopTalker } from '../api'
 import { formatBytes } from '../format'
 import { useSettings } from '../settings'
+import { tunnelDetails } from '../tunnelView'
 
 interface Props {
   result: AnalysisResult
@@ -49,6 +50,7 @@ export default function TopTalkers({ result, names, onSelect }: Props) {
               <li key={`${tunnel.type}-${tunnel.peer_a}-${tunnel.peer_b}`}>
                 <span className="mono">
                   {tunnel.type.toUpperCase()} {tunnel.peer_a} ⇄ {tunnel.peer_b}
+                  <span className="muted tunnel-details"> · {tunnelDetails(tunnel, t).join(' · ')}</span>
                 </span>
                 <span className="bytes">{formatBytes(tunnel.bytes)}</span>
               </li>

@@ -183,21 +183,60 @@ class FragGroup:
 
 @dataclass
 class TunnelState:
-    type: str  # esp | ike | wireguard | openvpn | gre | l2tp
+    type: str  # esp | ike | wireguard | openvpn | gre | l2tp | teredo
     peer_a: str
     peer_b: str
     packets_a2b: int = 0
     packets_b2a: int = 0
     bytes: int = 0
+    bytes_a2b: int = 0
+    bytes_b2a: int = 0
+    first_ts: Optional[float] = None
+    last_ts: Optional[float] = None
+    max_idle_s: float = 0.0
+    # Handshakes (IKE_SA_INIT / WireGuard / OpenVPN hard reset): requests seen,
+    # answers seen, and the time of the first and last answer.
+    handshake_requests: int = 0
+    handshake_replies: int = 0
+    first_reply_ts: Optional[float] = None
+    last_reply_ts: Optional[float] = None
 
 _TUNNEL_TOKENS = [
     ("esp", "esp"),
     ("isakmp", "ike"),
-    ("wireguard", "wireguard"),
+    ("wg", "wireguard"),  # tshark names the WireGuard dissector "wg"
     ("openvpn", "openvpn"),
     ("gre", "gre"),
     ("l2tp", "l2tp"),
+    ("teredo", "teredo"),
 ]
+
+# Handshake messages per tunnel type: (field, request values, reply values).
+_WG_HANDSHAKE = ("wg.type", {"1"}, {"2"})
+_OPENVPN_HANDSHAKE = ("openvpn.opcode", {"7", "10"}, {"8"})  # HARD_RESET_CLIENT_V2/V3, SERVER_V2
+_IKE_INIT_EXCHANGES = {"2", "4", "34"}  # IKEv1 Main/Aggressive, IKEv2 IKE_SA_INIT
+
+
+def _handshake_kind(tunnel_type: str, layers: dict) -> Optional[str]:
+    """'request', 'reply' or None for a packet of a tracked tunnel."""
+    if tunnel_type == "ike":
+        if fget(layers, "isakmp.exchangetype") not in _IKE_INIT_EXCHANGES:
+            return None
+        if field_bool(layers, "isakmp.flag_r"):
+            return "reply"
+        # A new SA starts with an all-zero responder SPI. IKEv1 has no response
+        # flag, so only its requests are counted.
+        rspi = fget(layers, "isakmp.rspi") or ""
+        return "request" if rspi and rspi.strip("0") == "" else None
+    spec = {"wireguard": _WG_HANDSHAKE, "openvpn": _OPENVPN_HANDSHAKE}.get(tunnel_type)
+    if spec is None:
+        return None
+    value = fget(layers, spec[0])
+    if value in spec[1]:
+        return "request"
+    if value in spec[2]:
+        return "reply"
+    return None
 
 _TLS_VERSIONS = {
     "0x0300": "SSL 3.0",
@@ -1030,9 +1069,24 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
                     break
             if src == tunnel.peer_a:
                 tunnel.packets_a2b += 1
+                tunnel.bytes_a2b += length
             else:
                 tunnel.packets_b2a += 1
+                tunnel.bytes_b2a += length
             tunnel.bytes += length
+            if tunnel.last_ts is not None:
+                tunnel.max_idle_s = max(tunnel.max_idle_s, ts - tunnel.last_ts)
+            if tunnel.first_ts is None:
+                tunnel.first_ts = ts
+            tunnel.last_ts = ts
+            kind = _handshake_kind(tunnel_type, layers)
+            if kind == "request":
+                tunnel.handshake_requests += 1
+            elif kind == "reply":
+                tunnel.handshake_replies += 1
+                if tunnel.first_reply_ts is None:
+                    tunnel.first_reply_ts = ts
+                tunnel.last_reply_ts = ts
             break
 
     # ARP announcements (duplicate IP detection)
@@ -1294,6 +1348,11 @@ def _build_tunnels(state: CaptureState) -> List[Tunnel]:
             packets_a_to_b=tunnel.packets_a2b,
             packets_b_to_a=tunnel.packets_b2a,
             bytes=tunnel.bytes,
+            bytes_a_to_b=tunnel.bytes_a2b,
+            bytes_b_to_a=tunnel.bytes_b2a,
+            duration_s=round((tunnel.last_ts or 0.0) - (tunnel.first_ts or 0.0), 3),
+            max_idle_s=round(tunnel.max_idle_s, 3),
+            handshakes=tunnel.handshake_replies,
         )
         for tunnel in state.tunnels.values()
     ]
