@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { AnalysisResult } from '../api'
 import { API_BASE, ChatHttpError, INVESTIGATE_SENTINEL, chatStream, deleteSession, getSession, patchSession } from '../api'
-import { BUY_URL } from '../demo'
+import { BUY_URL, GITHUB_URL } from '../demo'
 import { initialState, reduce, type Turn } from '../investigationState'
 import { estimateCostUsd } from '../pricing'
 import { useSettings } from '../settings'
@@ -246,6 +246,9 @@ export default function InvestigationPanel({
             {t('investigation.demoNote')} {t('investigation.demoChat')}{' '}
             <a className="demo-buy" href={BUY_URL} target="_blank" rel="noopener noreferrer">
               {t('demo.buy')}
+            </a>{' '}
+            <a className="demo-link-inline" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+              {t('demo.github')}
             </a>
           </p>
         </>

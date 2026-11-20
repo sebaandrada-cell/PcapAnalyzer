@@ -396,6 +396,8 @@ Ideas post-MVP: multiusuario/planes (freemium B2B), descifrado TLS con claves de
 
 ## Licencia
 
+Código fuente: https://github.com/sebaandrada-cell/PcapAnalyzer
+
 PcapAnalyzer es software libre bajo la [licencia Apache 2.0](LICENSE): puedes usarlo,
 modificarlo y redistribuirlo, también en tu empresa, conservando el aviso de
 copyright y el archivo [NOTICE](NOTICE). tshark/Wireshark (GPL) se ejecuta como un
