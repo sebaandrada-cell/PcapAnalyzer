@@ -10,6 +10,10 @@ export function setFormatLang(lang: Lang): void {
   activeLang = lang
 }
 
+export function getFormatLang(): Lang {
+  return activeLang
+}
+
 function decimal(value: number, digits: number): string {
   const fixed = value.toFixed(digits)
   return activeLang === 'es' ? fixed.replace('.', ',') : fixed

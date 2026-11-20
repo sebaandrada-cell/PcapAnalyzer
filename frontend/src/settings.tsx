@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { translate, type Lang } from './i18n'
+import { pickInitialLang, translate, type Lang } from './i18n'
 import { setFormatLang } from './format'
 
 type Theme = 'light' | 'dark'
@@ -18,8 +18,14 @@ interface Settings {
 const SettingsContext = createContext<Settings | null>(null)
 
 function initialLang(): Lang {
-  const stored = localStorage.getItem('pcap.lang')
-  return stored === 'en' ? 'en' : 'es'
+  let stored: string | null = null
+  try {
+    stored = localStorage.getItem('pcap.lang')
+  } catch {
+    /* storage blocked: fall back to the browser language */
+  }
+  const languages = navigator.languages?.length ? navigator.languages : [navigator.language ?? '']
+  return pickInitialLang(stored, languages)
 }
 
 function initialTheme(): Theme {
