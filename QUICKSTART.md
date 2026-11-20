@@ -1,6 +1,6 @@
 # PcapAnalyzer — Guía de inicio rápido
 
-Gracias por tu compra. PcapAnalyzer analiza capturas de red `.pcap` / `.pcapng`
+PcapAnalyzer es gratis y de código abierto (Apache 2.0). Analiza capturas de red `.pcap` / `.pcapng`
 (también comprimidas con gzip, `.pcap.gz`) y te da un panel con métricas,
 conversaciones, tablas de protocolo (HTTP, DNS, TLS), un motor que detecta
 problemas automáticamente y un diagnóstico asistido por IA — todo **en tu propia
@@ -133,7 +133,7 @@ Puedes ponerlas en el `.env` de la raíz:
 
 # PcapAnalyzer — Quick start (English)
 
-PcapAnalyzer analyzes `.pcap` / `.pcapng` network captures (gzip-compressed
+PcapAnalyzer is free and open source (Apache 2.0). It analyzes `.pcap` / `.pcapng` network captures (gzip-compressed
 `.pcap.gz` too) and gives you a dashboard with metrics, conversations, protocol
 tables (HTTP, DNS, TLS), an engine that auto-detects problems, and an AI-assisted
 diagnosis — all **on your own machine**. Captures are analyzed and discarded,

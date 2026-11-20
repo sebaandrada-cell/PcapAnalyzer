@@ -393,3 +393,10 @@ Seguridad: nunca se loguean payloads, el archivo subido se borra tras el anális
 - **Fase 4:** Docker Compose (on-premise), informe PDF exportable y cola async para capturas grandes ✔
 
 Ideas post-MVP: multiusuario/planes (freemium B2B), descifrado TLS con claves del usuario, persistencia opcional de análisis, workers externos (Redis/RQ) si la cola en proceso se queda corta.
+
+## Licencia
+
+PcapAnalyzer es software libre bajo la [licencia Apache 2.0](LICENSE): puedes usarlo,
+modificarlo y redistribuirlo, también en tu empresa, conservando el aviso de
+copyright y el archivo [NOTICE](NOTICE). tshark/Wireshark (GPL) se ejecuta como un
+programa aparte y no se distribuye con PcapAnalyzer.
