@@ -18,6 +18,13 @@ const TUNNEL_PROTOCOLS: Record<string, string> = {
   esp: 'esp', ike: 'isakmp', wireguard: 'wg', openvpn: 'openvpn', gre: 'gre', l2tp: 'l2tp', teredo: 'teredo',
 }
 
+const CLEARTEXT_PROTOCOLS: Record<string, string> = {
+  FTP: 'ftp', POP3: 'pop', IMAP: 'imap', SMTP: 'smtp', 'HTTP Basic': 'http',
+}
+const INSECURE_PROTOCOLS: Record<string, string> = {
+  Telnet: 'telnet', SMBv1: 'smb', 'SNMP v1': 'snmp', 'SNMP v2c': 'snmp',
+}
+
 /** Best display filter for an issue, or null when its evidence does not identify packets. */
 export function issueFilter(issue: Issue): string | null {
   const ev = issue.evidence
@@ -63,6 +70,34 @@ export function issueFilter(issue: Issue): string | null {
     const peers = [ev['sender'] ?? ev['initiator'] ?? ev['peer_a'], ev['silent_peer'] ?? ev['responder'] ?? ev['peer_b']]
       .map(str).filter((p): p is string => Boolean(p))
     return [proto, ...peers.map(addr)].join(' && ')
+  }
+  if (issue.type === 'port_scan') {
+    const scanner = str(ev['scanner'])
+    if (!scanner) return null
+    const target = str(ev['target'])
+    if (ev['kind'] === 'ports' && target) return `tcp && ${addr(scanner).replace('.addr', '.src')} && ${addr(target).replace('.addr', '.dst')}`
+    const port = num(ev['port'])
+    return port !== null ? `tcp.dstport == ${port} && ${addr(scanner).replace('.addr', '.src')}` : null
+  }
+  if (issue.type === 'cleartext_credentials') {
+    const proto = CLEARTEXT_PROTOCOLS[str(ev['protocol']) ?? '']
+    const server = str(ev['server'])
+    return proto && server ? `${proto} && ${addr(server)}` : proto ?? null
+  }
+  if (issue.type === 'insecure_protocol') {
+    const proto = INSECURE_PROTOCOLS[str(ev['protocol']) ?? '']
+    if (!proto) return null
+    const servers = Array.isArray(ev['servers']) ? ev['servers'].map(str).filter(Boolean) as string[] : []
+    return servers.length === 1 ? `${proto} && ${addr(servers[0])}` : proto
+  }
+  if (issue.type === 'arp_spoofing') {
+    const mac = str(ev['mac'])
+    return mac ? `arp && _ws.col.info contains ${quoteString(mac)}` : 'arp'
+  }
+  if (issue.type === 'ip_fragment_overlap') {
+    const source = str(ev['source'])
+    const destination = str(ev['destination'])
+    if (source && destination) return `${addr(source)} && ${addr(destination)} && _ws.col.info matches "fragment"`
   }
   if (issue.type === 'arp_storm') return 'arp && _ws.col.info contains "Who has"'
 

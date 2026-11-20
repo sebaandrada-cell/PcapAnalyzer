@@ -19,14 +19,14 @@ Verlo en Wireshark es cuestión de saber qué buscar. Encontrarlo entre decenas 
 Por eso he hecho PcapAnalyzer: subes un .pcap o .pcapng (también .gz) y te dice qué falla, por qué y qué mirar después.
 
 Lo que hace:
-- Detecta 18 tipos de problema: bloqueos de firewall (SYN→RST), retransmisiones y ACK duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación, errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
+- Detecta 27 tipos de problema, también de seguridad: bloqueos de firewall (SYN→RST), retransmisiones y ACK duplicados, pérdida y reordenamiento, ventana cero o llena, PMTUD, fragmentación, errores ICMP, DNS sin respuesta o lento, fallos TLS, túneles VPN e IPs duplicadas.
 - Investigación con IA: la IA aplica filtros reales, mira los flujos y las estadísticas, y entrega veredicto, hallazgos con evidencia (paquetes y filtros clicables), causa probable y qué hacer. Después le preguntas lo que falte. Con tu propia clave de Anthropic; sin clave funciona en modo demo, con texto generado sin IA.
 - Filtros estilo Wireshark sobre la lista de paquetes, colores, exportación CSV e información experta.
 - Informe en PDF, interfaz en español e inglés, tema claro y oscuro.
 
 Se ejecuta en tu máquina con Docker, con un solo comando (./start.sh). Las capturas, que suelen llevar credenciales y datos de clientes, no salen de tu equipo. Solo si activas la IA se envía un resumen en JSON, nunca el pcap.
 
-Pago único de 5 €, sin suscripción.
+Gratis y de código abierto (Apache 2.0).
 
 Demo sin registro, con una captura de ejemplo:
 https://pcap-analyzer-seven.vercel.app/#demo
@@ -56,7 +56,7 @@ What it does:
 
 It runs on your own machine with Docker, with a single command (./start.sh). Captures, which often hold credentials and customer data, do not leave your computer. Only if you turn on the AI is a JSON summary sent, never the pcap.
 
-One-time €5, no subscription.
+Free and open source (Apache 2.0).
 
 Demo with a sample capture, no sign-up:
 https://pcap-analyzer-seven.vercel.app/#demo
@@ -79,5 +79,5 @@ externos; no está comprobado, pruébalo con el primero y mira las impresiones.
 
 ```
 Demo sin registro: https://pcap-analyzer-seven.vercel.app/#demo
-Descarga (5 €): https://sebaandrada6.gumroad.com/l/hspgx
+Descarga gratis: https://sebaandrada6.gumroad.com/l/hspgx
 ```

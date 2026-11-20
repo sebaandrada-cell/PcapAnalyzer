@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from .. import __version__, config
 from ..detectors import build_issues
 from ..detectors.tls_alerts import _TLS_ALERT_NAMES
+from .security import SecurityState, track as track_security
 from .quality import apply_quality_caveats, build_capture_quality, duplicate_key, is_duplicate
 from ..models import (
     AnalysisResult,
@@ -322,6 +323,7 @@ class CaptureState:
     arp_requests_per_second: Dict[int, int] = field(default_factory=dict)
     arp_request_senders: Dict[str, list] = field(default_factory=dict)
     arp_request_targets: Set[str] = field(default_factory=set)
+    security: SecurityState = field(default_factory=SecurityState)
     # Wireshark-style packet list (first PACKET_LIST_MAX packets)
     packet_rows: List[PacketRow] = field(default_factory=list)
     # HTTP requests + per-stream queue of requests awaiting their response
@@ -711,6 +713,8 @@ def _consume_packet(state: CaptureState, layers: dict) -> None:
 
     if duplicate:
         return
+
+    track_security(state.security, layers, chain, src, dst)
 
     tcp_stream = fget(layers, "tcp.stream")
     udp_stream = fget(layers, "udp.stream")

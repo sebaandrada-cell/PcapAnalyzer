@@ -59,7 +59,7 @@ found_env="$(find "$ROOT" -name '.env' -o -name '*.pem' -o -name '*.key' -o -nam
 [ -z "$found_env" ] || bad "archivos sensibles dentro del paquete: $found_env"
 
 # ── Must ship ────────────────────────────────────────────────────────────
-for p in start.sh .env.example docker-compose.yml README.md QUICKSTART.md LICENSE.txt \
+for p in start.sh .env.example docker-compose.yml README.md QUICKSTART.md LICENSE NOTICE \
          backend/Dockerfile backend/requirements.txt backend/app/main.py \
          frontend/Dockerfile frontend/nginx.conf frontend/package.json frontend/public/sample.pcap; do
   [ -e "$ROOT/$p" ] || bad "falta un archivo necesario: $p"

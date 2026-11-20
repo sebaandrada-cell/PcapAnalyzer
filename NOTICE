@@ -1,0 +1,15 @@
+PcapAnalyzer
+Copyright 2026 Noviembrepunk
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party software used by PcapAnalyzer, under its own license:
+
+- tshark / Wireshark (GPL-2.0-or-later) is run as a separate program to read
+  captures. It is not distributed with PcapAnalyzer; install it yourself or let
+  the Docker image install it from the distribution's packages.
+- psycopg (LGPL-3.0) is used unmodified as a library for the optional
+  multi-tenant mode.
+- The other Python and JavaScript dependencies (FastAPI, Uvicorn, Pydantic,
+  Anthropic SDK, ReportLab, React, Recharts, Supabase JS and others) are under
+  MIT, BSD or Apache-2.0 licenses; see each package for its terms.
