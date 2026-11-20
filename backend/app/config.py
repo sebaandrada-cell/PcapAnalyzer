@@ -167,6 +167,18 @@ ICMP_UNREACHABLE_MIN = _int_env("ICMP_UNREACHABLE_MIN", 1)
 ICMP_TTL_EXCEEDED_MIN = _int_env("ICMP_TTL_EXCEEDED_MIN", 5)
 MAX_ARP_CLAIMS = _int_env("MAX_ARP_CLAIMS", 20000)
 MAX_ARP_MACS_PER_IP = _int_env("MAX_ARP_MACS_PER_IP", 32)
+# --- Security analysis (analysis/security.py and its detectors) ---
+# Port scan: distinct ports probed on one host, or distinct hosts probed on one
+# port, with at most SCAN_MAX_ANSWERED_PCT of the probes answered by a SYN-ACK.
+SCAN_MIN_PORTS = _int_env("SCAN_MIN_PORTS", 20)
+SCAN_MIN_HOSTS = _int_env("SCAN_MIN_HOSTS", 20)
+SCAN_MAX_ANSWERED_PCT = float(os.environ.get("SCAN_MAX_ANSWERED_PCT", 50.0))
+# ARP spoofing: one MAC claiming at least this many IPs, one of them also
+# claimed by another MAC.
+ARP_SPOOF_MIN_IPS = _int_env("ARP_SPOOF_MIN_IPS", 2)
+MAX_SECURITY_ENTRIES = _int_env("MAX_SECURITY_ENTRIES", 5000)
+MAX_SCAN_PROBES_PER_SOURCE = _int_env("MAX_SCAN_PROBES_PER_SOURCE", 20000)
+MAX_SECURITY_HOSTS_LISTED = _int_env("MAX_SECURITY_HOSTS_LISTED", 20)
 # ARP storm (detectors/arp_storm.py): ARP requests per second on the segment and
 # how many seconds must reach that rate before it is reported.
 ARP_STORM_RATE_PER_S = _int_env("ARP_STORM_RATE_PER_S", 20)
