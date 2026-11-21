@@ -216,7 +216,8 @@ apply per question, per session and per day (see the table).
 
 ## Troubleshooting
 
-Server error messages are shown in Spanish:
+Server error messages follow the interface language (they are in Spanish when the
+app is in Spanish); they are listed here in Spanish with the English meaning:
 
 - **"Se requiere un token Bearer…"** (a Bearer token is required) — paste the
   token into the "API token" field (top right). It is in `.env`
