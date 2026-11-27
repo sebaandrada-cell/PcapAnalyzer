@@ -22,7 +22,21 @@ CONTENT_FIELDS: Tuple[str, ...] = (
     "data", "tcp.payload", "tcp.segment_data", "tcp.reassembled.data", "tls.segment", "udp.payload", "http.file_data", "http.request.line",
     "http.response.line", "http.cookie", "http.authorization", "dns.txt", "smb",
     "smb2", "sip.msg_body", "ftp.request.arg", "imf.", "mime_multipart.",
+    # URL query strings often carry tokens or session ids.
+    "http.request.uri.query",
 )
+
+# Protocols whose Info column shows login commands and their arguments
+# (FTP "PASS x", IMAP "LOGIN user pass", SMTP "AUTH PLAIN ...").
+SENSITIVE_INFO_PROTOCOLS: Tuple[str, ...] = ("ftp", "pop", "imap", "smtp", "telnet")
+# Fields whose value is a URL: the path is kept, the query is hidden.
+URL_FIELDS: Tuple[str, ...] = ("http.request.uri", "http.request.full_uri")
+_QUERY = re.compile(r"\?[^\s]*")
+
+
+def strip_query(text: str) -> str:
+    """Hide every URL query string in ``text``, keeping the path."""
+    return _QUERY.sub("?[query hidden]", text)
 
 _FIELD_NAME = re.compile(r"^[A-Za-z0-9_.]+$")
 

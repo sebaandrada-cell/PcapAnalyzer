@@ -16,7 +16,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .. import config
 from ..sessions import Session
 from . import stats_parse
-from .fields import check_fields
+from .fields import SENSITIVE_INFO_PROTOCOLS, URL_FIELDS, check_fields, strip_query
 from .masking import mask_sensitive
 from .stream_metrics import StreamPacket, compute_stream_metrics, select_rows
 from .tshark_run import ToolError, ToolTimeout, run_tshark, run_tshark_bounded, validate_filter
@@ -76,13 +76,30 @@ def capture_overview(ctx: ToolContext) -> ToolResult:
         "expert_info": [e.model_dump() for e in _cap(list(a.expert_info), "expert_info", truncated)],
         "dns_queries": [d.model_dump() for d in _cap(list(a.dns_queries), "dns_queries", truncated)],
         "tls_sessions": [t.model_dump() for t in _cap(list(a.tls_sessions), "tls_sessions", truncated)],
-        "http_requests": [h.model_dump() for h in _cap(list(a.http_requests), "http_requests", truncated)],
+        "http_requests": [
+            h.model_dump() if ctx.session.content_allowed
+            else dict(h.model_dump(), uri=strip_query(h.uri))
+            for h in _cap(list(a.http_requests), "http_requests", truncated)
+        ],
         "dhcp_leases": [d.model_dump() for d in _cap(list(a.dhcp_leases), "dhcp_leases", truncated)],
         "service_response_times": [s.model_dump() for s in a.service_response_times],
         "resolved_names": [r.model_dump() for r in _cap(list(a.resolved_names), "resolved_names", truncated)],
         "truncated_sections": truncated,
     }
     return ToolResult(content=content, truncated=bool(truncated))
+
+
+# ---- privacy without the content switch ---------------------------------------
+def _redact_value(name: str, value: str, protocols: List[str]) -> str:
+    """Hide credentials and URL queries that header fields can still carry."""
+    if name == "_ws.col.info":
+        sensitive = next((p for p in protocols if p in SENSITIVE_INFO_PROTOCOLS), None)
+        if sensitive and value:
+            return "[hidden: %s command; enable packet content to see it]" % sensitive.upper()
+        return strip_query(value)
+    if name in URL_FIELDS:
+        return strip_query(value)
+    return value
 
 
 # ---- filter_packets ----------------------------------------------------------
@@ -109,12 +126,17 @@ def filter_packets(
         return _error("invalid_filter", message=str(exc))
 
     wanted = [f for f in fields if f != "frame.number"]
+    redact = not ctx.session.content_allowed
+    # The Info column of login protocols shows the credentials; to hide it we
+    # need each row's protocol chain, fetched as a helper field never returned.
+    want_info = redact and "_ws.col.info" in wanted
+    query_fields = wanted + (["frame.protocols"] if want_info else [])
     args = [
         "-r", ctx.pcap_path, "-Y", display_filter, "-T", "fields",
         "-E", "separator=\t", "-E", "occurrence=a", "-E", "aggregator=|",
         "-e", "frame.number",
     ]
-    for name in wanted:
+    for name in query_fields:
         args += ["-e", name]
     # tshark's -c counts packets read, not matched, so paging happens here on a
     # size-bounded output: the last line may be cut and is dropped.
@@ -134,7 +156,12 @@ def filter_packets(
     for line in page:
         parts = line.split("\t")
         row: Dict[str, Any] = {"frame": int(parts[0]) if parts[0].isdigit() else parts[0]}
-        for name, value in zip(wanted, parts[1:]):
+        values = dict(zip(query_fields, parts[1:]))
+        protocols = values.pop("frame.protocols", "").split(":")
+        for name in wanted:
+            value = values.get(name, "")
+            if redact:
+                value = _redact_value(name, value, protocols)
             row[name] = value.split("|") if "|" in value else value
         rows.append(row)
     return ToolResult(
