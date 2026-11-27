@@ -1,6 +1,6 @@
 # Plan de difusión — PcapAnalyzer (v2 · 24-oct-2026)
 
-**Producto:** PcapAnalyzer 1.5.0 · descarga self-hosted · gratis y de código abierto (Apache 2.0)
+**Producto:** PcapAnalyzer 1.5.1 · descarga self-hosted · gratis y de código abierto (Apache 2.0)
 **Compra:** https://sebaandrada6.gumroad.com/l/hspgx
 **Landing (ES/EN, pública):** https://claude.ai/artifact/NAX5Yw8wfuP86odEKtS7uv
 **Público:** sysadmins, MSPs y NOC de primer nivel. Gente que ya usa Wireshark y no
@@ -12,6 +12,7 @@ quiere perder media hora leyendo paquetes.
 
 | | |
 |---|---|
+| Paquete 1.5.1 (arreglo de privacidad: sin el interruptor de contenido la IA ya no ve los logins en claro de FTP/POP/IMAP/SMTP/Telnet ni los query strings de las URL) | ☐ pendiente de subir a Gumroad |
 | Paquete 1.5.0 (gratis, Apache 2.0; 27 detectores con seguridad, túneles y tormenta ARP; app en inglés según el navegador) | ☑ subido a Gumroad el 2026-11-20 a 0 € (sustituye al 1.4.1; sha256 verificado en el archivo que sirve Gumroad) |
 | Paquete 1.4.1 (investigación con IA, 21 detectores, calidad de la captura, filtros reales de Wireshark sobre toda la captura), sin secretos ni datos internos | ☑ subido a Gumroad el 2026-11-17 (sustituye al 1.4.0; sha256 verificado en la descarga real) |
 | Paquete 1.1.1 (arregla el inglés del modo demo) incluido en el 1.2.0 | ✔ |
