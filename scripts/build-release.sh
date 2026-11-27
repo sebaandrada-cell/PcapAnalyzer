@@ -117,9 +117,9 @@ scan "dominio de la beta alojada"               'pcapanalyzer-api\.onrender\.com
 # The public demo (no backend calls) may be linked from the READMEs only;
 # anywhere else, or any other path on that host, still fails.
 demo_hits="$(grep -rIlE -- 'pcap-analyzer-seven' "$ROOT" 2>/dev/null | sed "s#^$ROOT/##" \
-  | grep -vxE 'README(\.es)?\.md' | head -5)"
+  | grep -vxE 'README(\.(es|tr))?\.md' | head -5)"
 [ -z "$demo_hits" ] || bad "dominio de la beta alojada en: $(echo "$demo_hits" | tr '\n' ' ')"
-readme_bad="$(grep -hoE 'pcap-analyzer-seven[^[:space:])>]*' "$ROOT"/README.md "$ROOT"/README.es.md 2>/dev/null \
+readme_bad="$(grep -hoE 'pcap-analyzer-seven[^[:space:])>]*' "$ROOT"/README.md "$ROOT"/README.es.md "$ROOT"/README.tr.md 2>/dev/null \
   | grep -vxE 'pcap-analyzer-seven\.vercel\.app/#demo' | head -3)"
 [ -z "$readme_bad" ] || bad "enlace a la beta alojada distinto de la demo pública en README: $readme_bad"
 
