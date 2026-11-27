@@ -81,8 +81,11 @@ set `TSHARK_PATH` to the binary.
 - The capture is analysed on your machine. While an AI investigation lasts it is kept
   encrypted (60 minutes of inactivity, or until you press "Delete capture now") and is
   then deleted.
-- The AI is optional. It only sees what its tools return (packet metadata; packet
-  content only if you switch it on for that session), never the pcap file.
+- The AI is optional and uses your own Anthropic API key. It only sees what its tools
+  return, never the pcap file. With "allow packet content" off (the default) that is
+  packet metadata: IPs, MACs, ports, DNS names, TLS SNI and HTTP host and path. URL
+  query strings and the login commands of FTP, POP3, IMAP, SMTP and Telnet are hidden.
+  Nothing is anonymised: IP addresses and hostnames are sent as they are.
 - No telemetry and no accounts for the self-hosted version.
 
 ## Tests
